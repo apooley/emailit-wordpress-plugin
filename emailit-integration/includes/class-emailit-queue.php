@@ -106,7 +106,30 @@ class Emailit_Queue {
         ) $charset_collate;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
+        $result = dbDelta($sql);
+
+        // Log table creation result if debugging enabled
+        if (defined('WP_DEBUG') && WP_DEBUG && !empty($result)) {
+            error_log('[Emailit] Queue table creation result: ' . print_r($result, true));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check if queue table exists and create it if needed
+     */
+    public function ensure_table_exists() {
+        global $wpdb;
+
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $this->queue_table)) !== $this->queue_table) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Queue table missing, creating it now');
+            }
+            return $this->create_table();
+        }
+
+        return true;
     }
 
     /**
@@ -238,6 +261,9 @@ class Emailit_Queue {
             array('%d')
         );
 
+        // Update email log status to processing
+        $this->update_email_log_status($queue_id, 'processing');
+
         // Send email via API
         $result = $api->send_email($email_data);
 
@@ -303,6 +329,15 @@ class Emailit_Queue {
             array('%d')
         );
 
+        // Update email log status based on API response
+        $email_status = 'sent'; // Default status
+        if (is_array($api_response) && isset($api_response['data'])) {
+            // Extract email_id and other info for the logger if needed
+            $this->update_email_log_status($queue_id, $email_status, $api_response);
+        } else {
+            $this->update_email_log_status($queue_id, $email_status);
+        }
+
         if ($this->logger) {
             $this->logger->log(
                 sprintf('Queue item %d completed successfully', $queue_id),
@@ -330,6 +365,9 @@ class Emailit_Queue {
             array('%d')
         );
 
+        // Update email log status to failed
+        $this->update_email_log_status($queue_id, 'failed');
+
         if ($this->logger) {
             $this->logger->log(
                 sprintf('Queue item %d failed permanently', $queue_id),
@@ -340,29 +378,122 @@ class Emailit_Queue {
     }
 
     /**
+     * Update email log status based on queue ID
+     */
+    private function update_email_log_status($queue_id, $status, $api_response = null) {
+        global $wpdb;
+
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+
+        $update_data = array(
+            'status' => $status,
+            'updated_at' => current_time('mysql')
+        );
+
+        // Add API response data if available
+        if ($api_response && is_array($api_response) && isset($api_response['data'])) {
+            if (isset($api_response['data']['id'])) {
+                $update_data['email_id'] = sanitize_text_field($api_response['data']['id']);
+            }
+            if (isset($api_response['data']['token'])) {
+                $update_data['token'] = sanitize_text_field($api_response['data']['token']);
+            }
+            if (isset($api_response['data']['message_id'])) {
+                $update_data['message_id'] = sanitize_text_field($api_response['data']['message_id']);
+            }
+
+            // Set sent_at timestamp for successful sends
+            if ($status === 'sent') {
+                $update_data['sent_at'] = current_time('mysql');
+            }
+        }
+
+        // Update email log record
+        $updated = $wpdb->update(
+            $logs_table,
+            $update_data,
+            array('queue_id' => $queue_id),
+            array_fill(0, count($update_data), '%s'),
+            array('%d')
+        );
+
+        if (defined('WP_DEBUG') && WP_DEBUG && $updated !== false) {
+            error_log(sprintf('[Emailit] Updated email log status for queue_id %d to %s (affected rows: %d)', $queue_id, $status, $updated));
+        }
+
+        return $updated;
+    }
+
+    /**
      * Get queue statistics
      */
     public function get_stats() {
         global $wpdb;
 
-        $stats = $wpdb->get_row("
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-            FROM {$this->queue_table}
-            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAYS)
-        ", ARRAY_A);
+        // Ensure table exists, create if missing
+        if (!$this->ensure_table_exists()) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Failed to create queue table, returning empty stats');
+            }
+            return array(
+                'total' => 0,
+                'pending' => 0,
+                'processing' => 0,
+                'completed' => 0,
+                'failed' => 0
+            );
+        }
 
-        return $stats ?: array(
-            'total' => 0,
-            'pending' => 0,
-            'processing' => 0,
-            'completed' => 0,
-            'failed' => 0
+        // Get current queue status (active items) and recent history
+        $current_query = $wpdb->prepare("
+            SELECT
+                COUNT(*) as total_active,
+                SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as processing
+            FROM {$this->queue_table}
+            WHERE status IN ('pending', 'processing')
+        ", 'pending', 'processing');
+
+        $recent_query = $wpdb->prepare("
+            SELECT
+                COUNT(*) as total_recent,
+                SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as completed_recent,
+                SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as failed_recent
+            FROM {$this->queue_table}
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            AND status IN ('completed', 'failed')
+        ", 'completed', 'failed');
+
+        $current_stats = $wpdb->get_row($current_query, ARRAY_A);
+        $recent_stats = $wpdb->get_row($recent_query, ARRAY_A);
+
+        // Handle database errors
+        if ($wpdb->last_error) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Queue stats query error: ' . $wpdb->last_error);
+                error_log('[Emailit] Current query was: ' . $current_query);
+                error_log('[Emailit] Recent query was: ' . $recent_query);
+            }
+
+            return array(
+                'total' => 0,
+                'pending' => 0,
+                'processing' => 0,
+                'completed' => 0,
+                'failed' => 0
+            );
+        }
+
+        // Combine current active queue and recent history
+        $stats = array(
+            'pending' => (int) ($current_stats['pending'] ?? 0),
+            'processing' => (int) ($current_stats['processing'] ?? 0),
+            'completed' => (int) ($recent_stats['completed_recent'] ?? 0),
+            'failed' => (int) ($recent_stats['failed_recent'] ?? 0),
+            'total' => (int) ($current_stats['total_active'] ?? 0) + (int) ($recent_stats['total_recent'] ?? 0)
         );
+
+        return $stats;
     }
 
     /**
@@ -432,7 +563,7 @@ class Emailit_Queue {
     /**
      * Clear all queue items (for testing/debugging)
      */
-    public function clear_queue($status = null) {
+    public function clear_queue(?string $status = null) {
         global $wpdb;
 
         if ($status) {

@@ -50,11 +50,20 @@ class Emailit_Admin {
      * Initialize admin functionality
      */
     public function init() {
+        // Only initialize admin functionality in admin context
+        if (!is_admin()) {
+            return;
+        }
+
         // Register settings
-        add_action('admin_init', array($this, 'register_settings'));
+        $this->register_settings();
 
         // Add AJAX handlers
         add_action('wp_ajax_emailit_send_test_email', array($this, 'ajax_send_test_email'));
+        add_action('wp_ajax_emailit_send_wordpress_test', array($this, 'ajax_send_wordpress_test'));
+        add_action('wp_ajax_emailit_diagnostic', array($this, 'ajax_diagnostic'));
+        add_action('wp_ajax_emailit_get_queue_stats', array($this, 'ajax_get_queue_stats'));
+        add_action('wp_ajax_emailit_process_queue_now', array($this, 'ajax_process_queue_now'));
         add_action('wp_ajax_emailit_get_log_details', array($this, 'ajax_get_log_details'));
         add_action('wp_ajax_emailit_delete_log', array($this, 'ajax_delete_log'));
         add_action('wp_ajax_emailit_resend_email', array($this, 'ajax_resend_email'));
@@ -62,6 +71,7 @@ class Emailit_Admin {
         add_action('wp_ajax_emailit_cleanup_logs', array($this, 'ajax_cleanup_logs'));
         add_action('wp_ajax_emailit_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_emailit_export_logs', array($this, 'ajax_export_logs'));
+        add_action('wp_ajax_emailit_test_webhook', array($this, 'ajax_test_webhook'));
 
         // Add admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
@@ -80,6 +90,10 @@ class Emailit_Admin {
      * Add menu pages
      */
     public function add_menu_pages() {
+        // Only add menu pages in admin context
+        if (!is_admin()) {
+            return;
+        }
         // Main settings page
         add_options_page(
             __('Emailit Settings', 'emailit-integration'),
@@ -105,65 +119,84 @@ class Emailit_Admin {
      */
     public function register_settings() {
         // API Settings
-        register_setting('emailit_settings', 'emailit_api_key', array(
+        register_setting('emailit-settings', 'emailit_api_key', array(
             'type' => 'string',
             'sanitize_callback' => array($this, 'sanitize_api_key'),
             'default' => ''
         ));
 
         // Email Settings
-        register_setting('emailit_settings', 'emailit_from_name', array(
+        register_setting('emailit-settings', 'emailit_from_name', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
             'default' => get_bloginfo('name')
         ));
 
-        register_setting('emailit_settings', 'emailit_from_email', array(
+        register_setting('emailit-settings', 'emailit_from_email', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_email',
             'default' => get_bloginfo('admin_email')
         ));
 
-        register_setting('emailit_settings', 'emailit_reply_to', array(
+        register_setting('emailit-settings', 'emailit_reply_to', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_email',
             'default' => ''
         ));
 
         // Logging Settings
-        register_setting('emailit_settings', 'emailit_enable_logging', array(
+        register_setting('emailit-settings', 'emailit_enable_logging', array(
             'type' => 'boolean',
             'default' => 1
         ));
 
-        register_setting('emailit_settings', 'emailit_log_retention_days', array(
+        register_setting('emailit-settings', 'emailit_log_retention_days', array(
             'type' => 'integer',
             'sanitize_callback' => array($this, 'sanitize_retention_days'),
             'default' => 30
         ));
 
         // Advanced Settings
-        register_setting('emailit_settings', 'emailit_fallback_enabled', array(
+        register_setting('emailit-settings', 'emailit_fallback_enabled', array(
             'type' => 'boolean',
             'default' => 1
         ));
 
-        register_setting('emailit_settings', 'emailit_retry_attempts', array(
+        register_setting('emailit-settings', 'emailit_retry_attempts', array(
             'type' => 'integer',
             'sanitize_callback' => array($this, 'sanitize_retry_attempts'),
             'default' => 3
         ));
 
-        register_setting('emailit_settings', 'emailit_timeout', array(
+        register_setting('emailit-settings', 'emailit_timeout', array(
             'type' => 'integer',
             'sanitize_callback' => array($this, 'sanitize_timeout'),
             'default' => 30
         ));
 
-        register_setting('emailit_settings', 'emailit_webhook_secret', array(
+        register_setting('emailit-settings', 'emailit_webhook_secret', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
             'default' => wp_generate_password(32, false)
+        ));
+
+        // Queue/Async settings
+        register_setting('emailit-settings', 'emailit_enable_queue', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 0
+        ));
+
+        register_setting('emailit-settings', 'emailit_queue_batch_size', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 10
+        ));
+
+        register_setting('emailit-settings', 'emailit_queue_max_retries', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 3
         ));
 
         // Add settings sections
@@ -171,28 +204,42 @@ class Emailit_Admin {
             'emailit_api_section',
             __('API Configuration', 'emailit-integration'),
             array($this, 'api_section_callback'),
-            'emailit_settings'
+            'emailit-settings'
         );
 
         add_settings_section(
             'emailit_email_section',
             __('Email Settings', 'emailit-integration'),
             array($this, 'email_section_callback'),
-            'emailit_settings'
+            'emailit-settings'
         );
 
         add_settings_section(
             'emailit_logging_section',
             __('Logging Settings', 'emailit-integration'),
             array($this, 'logging_section_callback'),
-            'emailit_settings'
+            'emailit-settings'
+        );
+
+        add_settings_section(
+            'emailit_performance_section',
+            __('Performance & Queue Settings', 'emailit-integration'),
+            array($this, 'performance_section_callback'),
+            'emailit-settings'
         );
 
         add_settings_section(
             'emailit_advanced_section',
             __('Advanced Settings', 'emailit-integration'),
             array($this, 'advanced_section_callback'),
-            'emailit_settings'
+            'emailit-settings'
+        );
+
+        add_settings_section(
+            'emailit_webhook_section',
+            __('Webhook Settings', 'emailit-integration'),
+            array($this, 'webhook_section_callback'),
+            'emailit-settings'
         );
 
         // Add settings fields
@@ -208,7 +255,7 @@ class Emailit_Admin {
             'emailit_api_key',
             __('API Key', 'emailit-integration'),
             array($this, 'api_key_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_api_section'
         );
 
@@ -217,7 +264,7 @@ class Emailit_Admin {
             'emailit_from_name',
             __('From Name', 'emailit-integration'),
             array($this, 'from_name_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_email_section'
         );
 
@@ -225,7 +272,7 @@ class Emailit_Admin {
             'emailit_from_email',
             __('From Email', 'emailit-integration'),
             array($this, 'from_email_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_email_section'
         );
 
@@ -233,7 +280,7 @@ class Emailit_Admin {
             'emailit_reply_to',
             __('Reply-To Email', 'emailit-integration'),
             array($this, 'reply_to_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_email_section'
         );
 
@@ -242,7 +289,7 @@ class Emailit_Admin {
             'emailit_enable_logging',
             __('Enable Logging', 'emailit-integration'),
             array($this, 'enable_logging_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_logging_section'
         );
 
@@ -250,8 +297,33 @@ class Emailit_Admin {
             'emailit_log_retention_days',
             __('Log Retention (Days)', 'emailit-integration'),
             array($this, 'log_retention_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_logging_section'
+        );
+
+        // Performance/Queue fields
+        add_settings_field(
+            'emailit_enable_queue',
+            __('Enable Asynchronous Sending', 'emailit-integration'),
+            array($this, 'enable_queue_field_callback'),
+            'emailit-settings',
+            'emailit_performance_section'
+        );
+
+        add_settings_field(
+            'emailit_queue_batch_size',
+            __('Queue Batch Size', 'emailit-integration'),
+            array($this, 'queue_batch_size_field_callback'),
+            'emailit-settings',
+            'emailit_performance_section'
+        );
+
+        add_settings_field(
+            'emailit_queue_max_retries',
+            __('Queue Max Retries', 'emailit-integration'),
+            array($this, 'queue_max_retries_field_callback'),
+            'emailit-settings',
+            'emailit_performance_section'
         );
 
         // Advanced fields
@@ -259,7 +331,7 @@ class Emailit_Admin {
             'emailit_fallback_enabled',
             __('Enable Fallback', 'emailit-integration'),
             array($this, 'fallback_enabled_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_advanced_section'
         );
 
@@ -267,7 +339,7 @@ class Emailit_Admin {
             'emailit_retry_attempts',
             __('Retry Attempts', 'emailit-integration'),
             array($this, 'retry_attempts_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_advanced_section'
         );
 
@@ -275,7 +347,7 @@ class Emailit_Admin {
             'emailit_timeout',
             __('Timeout (Seconds)', 'emailit-integration'),
             array($this, 'timeout_field_callback'),
-            'emailit_settings',
+            'emailit-settings',
             'emailit_advanced_section'
         );
 
@@ -283,8 +355,8 @@ class Emailit_Admin {
             'emailit_webhook_secret',
             __('Webhook Secret', 'emailit-integration'),
             array($this, 'webhook_secret_field_callback'),
-            'emailit_settings',
-            'emailit_advanced_section'
+            'emailit-settings',
+            'emailit_webhook_section'
         );
     }
 
@@ -317,26 +389,54 @@ class Emailit_Admin {
         echo '<p>' . __('Configure email logging and retention settings.', 'emailit-integration') . '</p>';
     }
 
+    public function performance_section_callback() {
+        echo '<p>' . __('Configure asynchronous email sending and queue processing for better performance.', 'emailit-integration') . '</p>';
+    }
+
     public function advanced_section_callback() {
         echo '<p>' . __('Advanced configuration options.', 'emailit-integration') . '</p>';
+    }
+
+    public function webhook_section_callback() {
+        echo '<p>' . __('Configure webhook settings for real-time email status updates.', 'emailit-integration') . '</p>';
     }
 
     /**
      * Field callbacks
      */
     public function api_key_field_callback() {
-        $value = get_option('emailit_api_key', '');
-        $is_valid = !empty($value) && !is_wp_error($this->api->validate_api_key());
+        $raw_value = get_option('emailit_api_key', '');
+        $is_valid = false;
+        $has_key = !empty($raw_value);
 
-        echo '<input type="password" id="emailit_api_key" name="emailit_api_key" value="' . esc_attr($value) . '" class="regular-text" />';
+        // Check API key validity safely
+        if ($has_key) {
+            try {
+                $validation_result = $this->api->validate_api_key($raw_value);
+                $is_valid = !is_wp_error($validation_result);
+            } catch (Exception $e) {
+                // Ignore validation errors in admin
+                $is_valid = false;
+            }
+        }
+
+        // Show placeholder if key exists, empty if not (NEVER show actual key)
+        $display_value = $has_key ? '••••••••••••••••••••••••••••••••' : '';
+        $placeholder = $has_key ? 'Enter new API key to replace existing key' : 'Enter your Emailit API key';
+
+        echo '<input type="password" id="emailit_api_key" name="emailit_api_key" value="' . esc_attr($display_value) . '" placeholder="' . esc_attr($placeholder) . '" class="regular-text" data-has-key="' . ($has_key ? '1' : '0') . '" />';
 
         if ($is_valid) {
             echo ' <span class="emailit-status delivered">✓ Valid</span>';
-        } elseif (!empty($value)) {
+        } elseif ($has_key) {
             echo ' <span class="emailit-status failed">✗ Invalid</span>';
         }
 
-        echo '<p class="description">' . __('Enter your Emailit API key. You can find this in your Emailit dashboard.', 'emailit-integration') . '</p>';
+        if ($has_key) {
+            echo '<p class="description">' . __('API key is set and encrypted. Enter a new key to replace it, or leave unchanged to keep current key.', 'emailit-integration') . '</p>';
+        } else {
+            echo '<p class="description">' . __('Enter your Emailit API key. You can find this in your Emailit dashboard.', 'emailit-integration') . '</p>';
+        }
     }
 
     public function from_name_field_callback() {
@@ -370,6 +470,25 @@ class Emailit_Admin {
         echo '<p class="description">' . __('Number of days to keep email logs. Set to 0 to keep logs indefinitely.', 'emailit-integration') . '</p>';
     }
 
+    public function enable_queue_field_callback() {
+        $value = get_option('emailit_enable_queue', 0);
+        echo '<input type="checkbox" id="emailit_enable_queue" name="emailit_enable_queue" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_enable_queue">' . __('Enable asynchronous email sending', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Process emails in the background for better performance. Emails are queued and sent via WordPress cron.', 'emailit-integration') . '</p>';
+    }
+
+    public function queue_batch_size_field_callback() {
+        $value = get_option('emailit_queue_batch_size', 10);
+        echo '<input type="number" id="emailit_queue_batch_size" name="emailit_queue_batch_size" value="' . esc_attr($value) . '" min="1" max="50" class="small-text" />';
+        echo '<p class="description">' . __('Number of emails to process in each batch. Lower values use less resources.', 'emailit-integration') . '</p>';
+    }
+
+    public function queue_max_retries_field_callback() {
+        $value = get_option('emailit_queue_max_retries', 3);
+        echo '<input type="number" id="emailit_queue_max_retries" name="emailit_queue_max_retries" value="' . esc_attr($value) . '" min="0" max="10" class="small-text" />';
+        echo '<p class="description">' . __('Maximum number of retry attempts for failed emails.', 'emailit-integration') . '</p>';
+    }
+
     public function fallback_enabled_field_callback() {
         $value = get_option('emailit_fallback_enabled', 1);
         echo '<input type="checkbox" id="emailit_fallback_enabled" name="emailit_fallback_enabled" value="1"' . checked(1, $value, false) . ' />';
@@ -393,8 +512,8 @@ class Emailit_Admin {
         $value = get_option('emailit_webhook_secret', '');
         $webhook_url = rest_url('emailit/v1/webhook');
 
-        echo '<input type="text" id="emailit_webhook_secret" name="emailit_webhook_secret" value="' . esc_attr($value) . '" class="regular-text" readonly />';
-        echo ' <button type="button" id="regenerate-webhook-secret" class="button button-secondary">' . __('Regenerate', 'emailit-integration') . '</button>';
+        echo '<input type="text" id="emailit_webhook_secret" name="emailit_webhook_secret" value="' . esc_attr($value) . '" class="regular-text" />';
+        echo '<p class="description">' . __('Enter the webhook secret provided by Emailit. This is used to validate webhook requests.', 'emailit-integration') . '</p>';
         echo '<p class="description">' . sprintf(__('Webhook endpoint: <code>%s</code>', 'emailit-integration'), esc_url($webhook_url)) . '</p>';
     }
 
@@ -422,6 +541,222 @@ class Emailit_Admin {
         } else {
             wp_send_json_success(array(
                 'message' => __('Test email sent successfully!', 'emailit-integration')
+            ));
+        }
+    }
+
+    /**
+     * Handle WordPress wp_mail test email AJAX request
+     */
+    public function ajax_send_wordpress_test() {
+        // Wrap the entire function in try-catch to capture any fatal errors
+        try {
+            // Debug logging (only when WP_DEBUG is enabled)
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] WordPress test email handler started');
+            }
+
+            check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+            if (!current_user_can('manage_options')) {
+                wp_die(__('Insufficient permissions.', 'emailit-integration'));
+            }
+
+            $test_email = sanitize_email($_POST['test_email']);
+            if (empty($test_email)) {
+                $test_email = get_bloginfo('admin_email');
+            }
+
+            // Get site info
+            $site_name = get_bloginfo('name');
+            $site_url = get_bloginfo('url');
+            $timestamp = current_time('mysql');
+
+            // Prepare email content
+            $subject = sprintf(__('[%s] WordPress Email Test via Emailit', 'emailit-integration'), $site_name);
+
+            $message = sprintf(
+                __('This is a test email sent through WordPress wp_mail() function, intercepted by the Emailit plugin.
+
+Site: %s
+URL: %s
+Timestamp: %s
+Plugin Version: %s
+
+If you receive this email, the WordPress integration is working correctly.
+
+This email was sent via the Emailit WordPress plugin test function.', 'emailit-integration'),
+                $site_name,
+                $site_url,
+                $timestamp,
+                EMAILIT_VERSION
+            );
+
+            // Set headers to indicate HTML content
+            $headers = array(
+                'Content-Type: text/html; charset=UTF-8',
+                'From: ' . $site_name . ' <' . get_option('admin_email') . '>'
+            );
+
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] About to call wp_mail for test email to: ' . $test_email);
+            }
+
+            // Send via wp_mail (which should be intercepted by our plugin)
+            $result = wp_mail($test_email, $subject, nl2br($message), $headers);
+
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] wp_mail returned: ' . ($result ? 'true' : 'false'));
+            }
+
+            if ($result) {
+                wp_send_json_success(array(
+                    'message' => __('WordPress test email sent successfully! Check the email logs for details.', 'emailit-integration'),
+                    'details' => array(
+                        'method' => 'wp_mail',
+                        'to' => $test_email,
+                        'subject' => $subject,
+                        'timestamp' => $timestamp
+                    )
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => __('WordPress test email failed. wp_mail() returned false. Check the error logs for details.', 'emailit-integration')
+                ));
+            }
+
+        } catch (Exception $e) {
+            // Always log exceptions (critical errors)
+            error_log('[Emailit] Exception in WordPress test: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+
+            if ($this->logger) {
+                $this->logger->log('WordPress test email exception', Emailit_Logger::LEVEL_ERROR, array(
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => defined('WP_DEBUG') && WP_DEBUG ? $e->getTraceAsString() : 'Debug disabled'
+                ));
+            }
+
+            wp_send_json_error(array(
+                'message' => sprintf(__('WordPress test email failed with exception: %s', 'emailit-integration'), $e->getMessage()),
+                'technical_details' => defined('WP_DEBUG') && WP_DEBUG ? array(
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ) : null
+            ));
+        } catch (Throwable $t) {
+            // Always log fatal errors (critical)
+            error_log('[Emailit] Fatal error in WordPress test: ' . $t->getMessage() . ' in ' . $t->getFile() . ':' . $t->getLine());
+
+            wp_send_json_error(array(
+                'message' => sprintf(__('WordPress test email failed with fatal error: %s', 'emailit-integration'), $t->getMessage()),
+                'technical_details' => defined('WP_DEBUG') && WP_DEBUG ? array(
+                    'file' => $t->getFile(),
+                    'line' => $t->getLine(),
+                    'type' => 'Fatal Error'
+                ) : null
+            ));
+        }
+    }
+
+    /**
+     * Simple diagnostic AJAX handler to test if AJAX is working
+     */
+    public function ajax_diagnostic() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $diagnostic_info = array(
+            'plugin_loaded' => class_exists('Emailit_Integration'),
+            'mailer_loaded' => class_exists('Emailit_Mailer'),
+            'api_loaded' => class_exists('Emailit_API'),
+            'logger_loaded' => class_exists('Emailit_Logger'),
+            'php_version' => PHP_VERSION,
+            'wp_version' => get_bloginfo('version'),
+            'memory_limit' => ini_get('memory_limit'),
+            'max_execution_time' => ini_get('max_execution_time'),
+            'plugin_version' => EMAILIT_VERSION,
+            'wp_mail_function_exists' => function_exists('wp_mail'),
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'current_user_id' => get_current_user_id(),
+            'current_time' => current_time('mysql')
+        );
+
+        wp_send_json_success(array(
+            'message' => 'Diagnostic completed successfully',
+            'diagnostic_info' => $diagnostic_info
+        ));
+    }
+
+    /**
+     * Get queue statistics via AJAX
+     */
+    public function ajax_get_queue_stats() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        if (!$this->queue) {
+            wp_send_json_error(array(
+                'message' => __('Queue system not available.', 'emailit-integration')
+            ));
+            return;
+        }
+
+        try {
+            $stats = $this->queue->get_stats();
+
+            // Ensure we have valid statistics
+            if (!is_array($stats) || empty($stats)) {
+                wp_send_json_error(array(
+                    'message' => __('Failed to retrieve queue statistics.', 'emailit-integration')
+                ));
+                return;
+            }
+
+            wp_send_json_success($stats);
+
+        } catch (Exception $e) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Queue stats AJAX error: ' . $e->getMessage());
+            }
+
+            wp_send_json_error(array(
+                'message' => __('Error retrieving queue statistics. Please try again.', 'emailit-integration')
+            ));
+        }
+    }
+
+    /**
+     * Process queue manually via AJAX
+     */
+    public function ajax_process_queue_now() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        if ($this->queue) {
+            try {
+                $this->queue->process_queue();
+                wp_send_json_success(array(
+                    'message' => __('Queue processed successfully.', 'emailit-integration')
+                ));
+            } catch (Exception $e) {
+                wp_send_json_error(array(
+                    'message' => sprintf(__('Queue processing failed: %s', 'emailit-integration'), $e->getMessage())
+                ));
+            }
+        } else {
+            wp_send_json_error(array(
+                'message' => __('Queue system not available.', 'emailit-integration')
             ));
         }
     }
@@ -694,6 +1029,82 @@ class Emailit_Admin {
     }
 
     /**
+     * AJAX handler for testing webhook
+     */
+    public function ajax_test_webhook() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        // Get webhook component
+        $webhook = emailit_get_component('webhook');
+        if (!$webhook) {
+            wp_send_json_error(array(
+                'message' => __('Webhook component not available.', 'emailit-integration')
+            ));
+        }
+
+        // Create test payload using Emailit's actual webhook format
+        $test_payload = array(
+            'webhook_request_id' => '1234567890',
+            'event_id' => 'test_' . time(),
+            'type' => 'email.delivery.sent',
+            'object' => array(
+                'email' => array(
+                    'id' => time(),
+                    'token' => 'test_token_' . wp_generate_password(12, false),
+                    'type' => 'outgoing',
+                    'message_id' => '<test_' . time() . '@emailit.dev>',
+                    'to' => get_bloginfo('admin_email'),
+                    'from' => get_option('emailit_from_name', get_bloginfo('name')) . ' <' . get_option('emailit_from_email', get_bloginfo('admin_email')) . '>',
+                    'subject' => 'Test Webhook - ' . get_bloginfo('name'),
+                    'timestamp' => time() . '.123',
+                    'spam_status' => 0,
+                    'tag' => null
+                ),
+                'status' => 'sent',
+                'details' => 'Test webhook event generated by Emailit Integration plugin',
+                'sent_with_ssl' => true,
+                'timestamp' => microtime(true),
+                'time' => 0.56
+            )
+        );
+
+        // Test the webhook by simulating a REST API request
+        try {
+            // Create a mock WP_REST_Request
+            $mock_request = new WP_REST_Request('POST', '/emailit/v1/webhook');
+            $mock_request->set_body(wp_json_encode($test_payload));
+            $mock_request->add_header('Content-Type', 'application/json');
+
+            // Add webhook secret header if configured
+            $webhook_secret = get_option('emailit_webhook_secret', '');
+            if (!empty($webhook_secret)) {
+                $signature = 'sha256=' . hash_hmac('sha256', wp_json_encode($test_payload), $webhook_secret);
+                $mock_request->add_header('X-Emailit-Signature', $signature);
+            }
+
+            $result = $webhook->handle_webhook($mock_request);
+
+            if (is_wp_error($result)) {
+                wp_send_json_error(array(
+                    'message' => sprintf(__('Webhook test failed: %s', 'emailit-integration'), $result->get_error_message())
+                ));
+            } else {
+                wp_send_json_success(array(
+                    'message' => __('Webhook test successful! The webhook endpoint is working correctly.', 'emailit-integration')
+                ));
+            }
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => sprintf(__('Webhook test failed: %s', 'emailit-integration'), $e->getMessage())
+            ));
+        }
+    }
+
+    /**
      * Admin notices
      */
     public function admin_notices() {
@@ -710,7 +1121,7 @@ class Emailit_Admin {
 
         // Check API key validity
         if (!empty($api_key)) {
-            $validation = $this->api->validate_api_key();
+            $validation = $this->api->validate_api_key($api_key);
             if (is_wp_error($validation) && $this->is_emailit_page()) {
                 echo '<div class="notice notice-error is-dismissible">';
                 echo '<p>' . sprintf(
@@ -931,13 +1342,52 @@ class Emailit_Admin {
     public function sanitize_api_key($value) {
         $value = sanitize_text_field($value);
 
-        // Encrypt the API key before storing
-        if (!empty($value)) {
-            $this->api->set_api_key($value);
-            return $value; // The API class handles encryption
+        // If the value is empty, keep the existing key
+        if (empty($value)) {
+            return get_option('emailit_api_key', '');
         }
 
-        return '';
+        // If the value is our placeholder (dots), keep the existing key
+        if ($value === '••••••••••••••••••••••••••••••••') {
+            return get_option('emailit_api_key', '');
+        }
+
+        // If we have a new actual API key, validate and encrypt it
+        if (!empty($value) && $value !== get_option('emailit_api_key', '')) {
+            // Basic validation - API keys should be alphanumeric with some special chars
+            if (!preg_match('/^[a-zA-Z0-9\-_\.]+$/', $value)) {
+                add_settings_error(
+                    'emailit_api_key',
+                    'invalid_api_key_format',
+                    __('API key contains invalid characters. Please check your API key and try again.', 'emailit-integration')
+                );
+                return get_option('emailit_api_key', ''); // Keep existing key on error
+            }
+
+            // Test the API key if possible (but don't fail if API is down)
+            try {
+                $validation_result = $this->api->validate_api_key($value);
+                if (is_wp_error($validation_result)) {
+                    add_settings_error(
+                        'emailit_api_key',
+                        'invalid_api_key',
+                        sprintf(__('API key validation failed: %s', 'emailit-integration'), $validation_result->get_error_message())
+                    );
+                    // Continue anyway in case it's a temporary API issue
+                }
+            } catch (Exception $e) {
+                // Log but don't fail - could be temporary network issue
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] API key validation error during save: ' . $e->getMessage());
+                }
+            }
+
+            // Encrypt and store the new key
+            return $this->api->encrypt_api_key($value);
+        }
+
+        // Default: return the sanitized value
+        return $value;
     }
 
     public function sanitize_retention_days($value) {
@@ -953,5 +1403,9 @@ class Emailit_Admin {
     public function sanitize_timeout($value) {
         $value = intval($value);
         return max(5, min(120, $value));
+    }
+
+    public function sanitize_checkbox($value) {
+        return !empty($value) ? 1 : 0;
     }
 }

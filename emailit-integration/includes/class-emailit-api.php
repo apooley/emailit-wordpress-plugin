@@ -144,17 +144,20 @@ class Emailit_API {
         $from_email = get_option('emailit_from_email', get_bloginfo('admin_email'));
         $reply_to = get_option('emailit_reply_to', '');
 
-        // Parse recipients
+        // Format recipients (API expects single string, not array)
         $to_emails = $this->parse_email_addresses($email_data['to']);
+        $to_string = is_array($to_emails) ? $to_emails[0] : $to_emails;
+
+        // Format from address (API expects "Name <email>" format)
+        $from_email_final = isset($email_data['from']) ? $email_data['from'] : $from_email;
+        $from_name_final = isset($email_data['from_name']) ? $email_data['from_name'] : $from_name;
+        $from_string = $from_name_final . ' <' . $from_email_final . '>';
 
         // Build request data
         $request_data = array(
-            'to' => $to_emails,
+            'to' => $to_string,
             'subject' => $email_data['subject'],
-            'from' => array(
-                'email' => isset($email_data['from']) ? $email_data['from'] : $from_email,
-                'name' => isset($email_data['from_name']) ? $email_data['from_name'] : $from_name
-            )
+            'from' => $from_string
         );
 
         // Add reply-to if available
@@ -162,41 +165,18 @@ class Emailit_API {
             $request_data['reply_to'] = !empty($email_data['reply_to']) ? $email_data['reply_to'] : $reply_to;
         }
 
-        // Handle message content
+        // Handle message content (API uses 'html' and 'text' fields)
         if (isset($email_data['content_type']) && $email_data['content_type'] === 'text/html') {
-            $request_data['html_body'] = $email_data['message'];
+            $request_data['html'] = $email_data['message'];
             // Generate plain text version
-            $request_data['text_body'] = $this->html_to_text($email_data['message']);
+            $request_data['text'] = $this->html_to_text($email_data['message']);
         } else {
-            $request_data['text_body'] = $email_data['message'];
+            $request_data['text'] = $email_data['message'];
         }
 
-        // Handle CC/BCC if present
-        if (!empty($email_data['cc'])) {
-            $request_data['cc'] = $this->parse_email_addresses($email_data['cc']);
-        }
-
-        if (!empty($email_data['bcc'])) {
-            $request_data['bcc'] = $this->parse_email_addresses($email_data['bcc']);
-        }
-
-        // Handle attachments
-        if (!empty($email_data['attachments'])) {
-            $request_data['attachments'] = $this->prepare_attachments($email_data['attachments']);
-        }
-
-        // Add custom headers
-        if (!empty($email_data['headers'])) {
-            $request_data['headers'] = $this->parse_headers($email_data['headers']);
-        }
-
-        // Add tracking data
-        $request_data['metadata'] = array(
-            'source' => 'wordpress',
-            'site_url' => home_url(),
-            'plugin_version' => EMAILIT_VERSION,
-            'timestamp' => current_time('mysql')
-        );
+        // Note: For now, we'll focus on the basic fields that match the API documentation
+        // CC/BCC and attachments may need to be handled differently or may not be supported
+        // Remove these for initial testing to match the curl example exactly
 
         return $request_data;
     }
@@ -268,6 +248,12 @@ class Emailit_API {
         // Apply filters
         $args = apply_filters('emailit_api_args', $args, $request_data);
 
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Emailit API Request URL: ' . $this->api_endpoint);
+            error_log('Emailit API Request Args: ' . print_r($args, true));
+        }
+
         // Make request
         $response = wp_remote_request($this->api_endpoint, $args);
 
@@ -278,6 +264,12 @@ class Emailit_API {
 
         $response_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
+
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Emailit API Response Code: ' . $response_code);
+            error_log('Emailit API Response Body: ' . $response_body);
+        }
 
         // Parse JSON response
         $parsed_response = json_decode($response_body, true);
@@ -433,14 +425,48 @@ class Emailit_API {
      * Get encrypted API key
      */
     private function get_api_key() {
-        $encrypted_key = get_option('emailit_api_key', '');
+        $key = get_option('emailit_api_key', '');
 
-        if (empty($encrypted_key)) {
+        if (empty($key)) {
             return '';
         }
 
-        // Decrypt the API key
-        return $this->decrypt_string($encrypted_key);
+        // Check if the key looks encrypted (base64 encoded)
+        // If it's not encrypted, return as-is (for backward compatibility)
+        if ($this->is_encrypted($key)) {
+            $decrypted = $this->decrypt_string($key);
+
+            // If new decryption fails, try legacy decryption
+            if (empty($decrypted) && strlen($key) > 50) {
+                $decrypted = $this->decrypt_string_legacy($key);
+
+                // If legacy decryption works, re-encrypt with new method
+                if (!empty($decrypted)) {
+                    $this->set_api_key($decrypted); // This will re-encrypt with new method
+                }
+            }
+
+            return $decrypted;
+        }
+
+        return $key;
+    }
+
+    /**
+     * Check if a string appears to be encrypted (enhanced detection)
+     */
+    private function is_encrypted($string) {
+        // First try new GCM format
+        if (base64_encode(base64_decode($string, true)) === $string) {
+            $decoded = base64_decode($string);
+            // GCM format: 12 bytes IV + 16 bytes tag + ciphertext (minimum 28 bytes)
+            if (strlen($decoded) >= 28) {
+                return true;
+            }
+        }
+
+        // Legacy detection for backward compatibility
+        return base64_encode(base64_decode($string, true)) === $string && strlen($string) > 50;
     }
 
     /**
@@ -455,9 +481,22 @@ class Emailit_API {
     /**
      * Test API connection
      */
-    public function test_connection($test_email = null) {
+    public function test_connection(?string $test_email = null) {
+        // Refresh API key from database
+        $this->api_key = $this->get_api_key();
+
+        // Debug: Check what we got from database
+        $raw_key = get_option('emailit_api_key', '');
+
         if (empty($this->api_key)) {
-            return new WP_Error('no_api_key', __('API key is required for testing.', 'emailit-integration'));
+            $debug_message = sprintf(
+                __('API key is required for testing. Debug: Raw key from DB: "%s" (length: %d), Processed key: "%s" (length: %d)', 'emailit-integration'),
+                substr($raw_key, 0, 10) . '...',
+                strlen($raw_key),
+                substr($this->api_key, 0, 10) . '...',
+                strlen($this->api_key)
+            );
+            return new WP_Error('no_api_key', $debug_message);
         }
 
         $test_data = array(
@@ -477,7 +516,7 @@ class Emailit_API {
     /**
      * Validate API key
      */
-    public function validate_api_key($api_key = null) {
+    public function validate_api_key(?string $api_key = null) {
         $key_to_test = $api_key ?: $this->api_key;
 
         if (empty($key_to_test)) {
@@ -549,23 +588,70 @@ class Emailit_API {
     }
 
     /**
-     * Encrypt string using WordPress salts
+     * Encrypt string using secure AES-256-GCM encryption
      */
     private function encrypt_string($string) {
         if (empty($string)) {
             return '';
         }
 
-        $key = wp_salt('auth');
-        $encrypted = base64_encode(openssl_encrypt($string, 'AES-256-CBC', $key, 0, substr($key, 0, 16)));
+        // Use AES-256-GCM for authenticated encryption
+        $cipher = 'AES-256-GCM';
 
-        return $encrypted;
+        // Generate proper 256-bit key from WordPress salts
+        $key = hash('sha256', wp_salt('auth') . wp_salt('secure_auth'), true);
+
+        // Generate random IV (12 bytes for GCM)
+        $iv = openssl_random_pseudo_bytes(12);
+
+        // Encrypt with authentication tag
+        $tag = '';
+        $encrypted = openssl_encrypt($string, $cipher, $key, OPENSSL_RAW_DATA, $iv, $tag);
+
+        if ($encrypted === false) {
+            return '';
+        }
+
+        // Combine IV + tag + ciphertext and encode
+        $result = base64_encode($iv . $tag . $encrypted);
+
+        return $result;
     }
 
     /**
-     * Decrypt string using WordPress salts
+     * Decrypt string using secure AES-256-GCM decryption
      */
     private function decrypt_string($encrypted_string) {
+        if (empty($encrypted_string)) {
+            return '';
+        }
+
+        $cipher = 'AES-256-GCM';
+
+        // Generate the same key
+        $key = hash('sha256', wp_salt('auth') . wp_salt('secure_auth'), true);
+
+        // Decode the combined data
+        $data = base64_decode($encrypted_string);
+        if ($data === false || strlen($data) < 28) { // 12 IV + 16 tag minimum
+            return '';
+        }
+
+        // Extract components
+        $iv = substr($data, 0, 12);
+        $tag = substr($data, 12, 16);
+        $ciphertext = substr($data, 28);
+
+        // Decrypt with authentication verification
+        $decrypted = openssl_decrypt($ciphertext, $cipher, $key, OPENSSL_RAW_DATA, $iv, $tag);
+
+        return $decrypted !== false ? $decrypted : '';
+    }
+
+    /**
+     * Legacy decrypt function for backward compatibility
+     */
+    private function decrypt_string_legacy($encrypted_string) {
         if (empty($encrypted_string)) {
             return '';
         }
@@ -575,4 +661,5 @@ class Emailit_API {
 
         return $decrypted !== false ? $decrypted : '';
     }
+
 }

@@ -44,20 +44,20 @@ $stats = $logger->get_stats();
     <!-- Statistics Overview -->
     <div class="emailit-stats">
         <div class="emailit-stat-card">
-            <span class="emailit-stat-number"><?php echo number_format($stats['total_sent']); ?></span>
-            <span class="emailit-stat-label"><?php _e('Total Sent', 'emailit-integration'); ?></span>
+            <span class="emailit-stat-number"><?php echo number_format($stats['total_sent']['value']); ?></span>
+            <span class="emailit-stat-label"><?php echo esc_html($stats['total_sent']['label']); ?></span>
         </div>
         <div class="emailit-stat-card">
-            <span class="emailit-stat-number"><?php echo number_format($stats['delivered']); ?></span>
-            <span class="emailit-stat-label"><?php _e('Delivered', 'emailit-integration'); ?></span>
+            <span class="emailit-stat-number"><?php echo number_format($stats['sent']['value']); ?></span>
+            <span class="emailit-stat-label"><?php echo esc_html($stats['sent']['label']); ?></span>
         </div>
         <div class="emailit-stat-card">
-            <span class="emailit-stat-number"><?php echo number_format($stats['failed']); ?></span>
-            <span class="emailit-stat-label"><?php _e('Failed', 'emailit-integration'); ?></span>
+            <span class="emailit-stat-number"><?php echo number_format($stats['failed']['value']); ?></span>
+            <span class="emailit-stat-label"><?php echo esc_html($stats['failed']['label']); ?></span>
         </div>
         <div class="emailit-stat-card">
-            <span class="emailit-stat-number"><?php echo $stats['delivery_rate']; ?>%</span>
-            <span class="emailit-stat-label"><?php _e('Delivery Rate', 'emailit-integration'); ?></span>
+            <span class="emailit-stat-number"><?php echo esc_html($stats['success_rate']['value']); ?></span>
+            <span class="emailit-stat-label"><?php echo esc_html($stats['success_rate']['label']); ?></span>
         </div>
     </div>
 

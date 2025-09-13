@@ -29,6 +29,8 @@ class Emailit_Logger {
     const STATUS_FAILED = 'failed';
     const STATUS_BOUNCED = 'bounced';
     const STATUS_COMPLAINED = 'complained';
+    const STATUS_HELD = 'held';
+    const STATUS_DELAYED = 'delayed';
 
     /**
      * Database table names
@@ -49,12 +51,17 @@ class Emailit_Logger {
     /**
      * Log email event
      */
-    public function log_email($email_data, $api_response = null, $status = self::STATUS_PENDING) {
+    public function log_email(array $email_data, ?array $api_response = null, ?string $status = null) {
         global $wpdb;
 
         // Skip logging if disabled
         if (!get_option('emailit_enable_logging', 1)) {
             return false;
+        }
+
+        // Set default status if not provided
+        if ($status === null) {
+            $status = self::STATUS_PENDING;
         }
 
         // Prepare log data
@@ -67,6 +74,11 @@ class Emailit_Logger {
             'created_at' => current_time('mysql'),
             'updated_at' => current_time('mysql')
         );
+
+        // Add queue ID if available
+        if (isset($email_data['queue_id']) && is_numeric($email_data['queue_id'])) {
+            $log_data['queue_id'] = (int) $email_data['queue_id'];
+        }
 
         // Add message content
         if (isset($email_data['content_type']) && $email_data['content_type'] === 'text/html') {
@@ -127,7 +139,7 @@ class Emailit_Logger {
     /**
      * Update email status
      */
-    public function update_email_status($identifier, $status, $details = null) {
+    public function update_email_status(string $identifier, string $status, ?string $details = null) {
         global $wpdb;
 
         // Determine identifier type and build where clause
@@ -205,7 +217,7 @@ class Emailit_Logger {
     /**
      * Log webhook event
      */
-    public function log_webhook($event_data, $email_id = null) {
+    public function log_webhook(array $event_data, ?string $email_id = null) {
         global $wpdb;
 
         $log_data = array(
@@ -455,21 +467,58 @@ class Emailit_Logger {
             GROUP BY status
         ", $date_from), ARRAY_A);
 
-        $stats = array(
+        $raw_stats = array(
             'total_sent' => $total_sent,
-            'delivered' => 0,
+            'sent' => 0,
             'failed' => 0,
             'bounced' => 0,
-            'complained' => 0,
-            'pending' => 0
+            'pending' => 0,
+            'held' => 0,
+            'delayed' => 0
         );
 
         foreach ($status_stats as $stat) {
-            $stats[$stat['status']] = (int) $stat['count'];
+            $raw_stats[$stat['status']] = (int) $stat['count'];
         }
 
-        // Calculate delivery rate
-        $stats['delivery_rate'] = $total_sent > 0 ? round(($stats['delivered'] / $total_sent) * 100, 2) : 0;
+        // Calculate success rate (sent emails)
+        $success_rate = $total_sent > 0 ? round(($raw_stats['sent'] / $total_sent) * 100, 2) : 0;
+
+        // Format for JavaScript consumption - only show stats that Emailit actually provides
+        $stats = array(
+            'total_sent' => array(
+                'value' => $raw_stats['total_sent'],
+                'label' => __('Total Emails', 'emailit-integration')
+            ),
+            'sent' => array(
+                'value' => $raw_stats['sent'],
+                'label' => __('Successfully Sent', 'emailit-integration')
+            ),
+            'failed' => array(
+                'value' => $raw_stats['failed'],
+                'label' => __('Failed', 'emailit-integration')
+            ),
+            'bounced' => array(
+                'value' => $raw_stats['bounced'],
+                'label' => __('Bounced', 'emailit-integration')
+            ),
+            'held' => array(
+                'value' => $raw_stats['held'],
+                'label' => __('Held', 'emailit-integration')
+            ),
+            'delayed' => array(
+                'value' => $raw_stats['delayed'],
+                'label' => __('Delayed', 'emailit-integration')
+            ),
+            'pending' => array(
+                'value' => $raw_stats['pending'],
+                'label' => __('Pending', 'emailit-integration')
+            ),
+            'success_rate' => array(
+                'value' => $success_rate . '%',
+                'label' => __('Success Rate', 'emailit-integration')
+            )
+        );
 
         return $stats;
     }

@@ -62,26 +62,54 @@ class Emailit_Mailer {
             add_action('phpmailer_init', array($this, 'phpmailer_init_handler'));
         }
 
-        // Hook to allow bypassing Emailit for specific emails
-        add_filter('emailit_should_send', array($this, 'should_send_via_emailit'), 10, 2);
+        // Note: should_send_via_emailit is used internally, not as a hook
     }
 
     /**
      * Handle pre_wp_mail filter (WordPress 5.7+)
      */
     public function pre_wp_mail_handler($null, $atts) {
-        // Extract wp_mail arguments
-        $to = $atts['to'];
-        $subject = $atts['subject'];
-        $message = $atts['message'];
-        $headers = isset($atts['headers']) ? $atts['headers'] : '';
-        $attachments = isset($atts['attachments']) ? $atts['attachments'] : array();
+        try {
+            // Debug logging (only when WP_DEBUG is enabled)
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Emailit attempting to send email via pre_wp_mail', Emailit_Logger::LEVEL_DEBUG, array(
+                    'to' => isset($atts['to']) ? $atts['to'] : 'not_set',
+                    'subject' => isset($atts['subject']) ? $atts['subject'] : 'not_set'
+                ));
+            }
 
-        // Send via Emailit
-        $result = $this->send($to, $subject, $message, $headers, $attachments);
+            // Extract wp_mail arguments
+            $to = $atts['to'];
+            $subject = $atts['subject'];
+            $message = $atts['message'];
+            $headers = isset($atts['headers']) ? $atts['headers'] : '';
+            $attachments = isset($atts['attachments']) ? $atts['attachments'] : array();
 
-        // Return result to bypass wp_mail
-        return $result;
+            // Send via Emailit
+            $result = $this->send($to, $subject, $message, $headers, $attachments);
+
+            // Debug logging
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Emailit send result', Emailit_Logger::LEVEL_DEBUG, array(
+                    'success' => !is_wp_error($result),
+                    'error' => is_wp_error($result) ? $result->get_error_message() : null
+                ));
+            }
+
+            // Return result to bypass wp_mail
+            return $result;
+        } catch (Exception $e) {
+            // Always log critical errors
+            $this->logger->log('CRITICAL: Exception in pre_wp_mail_handler', Emailit_Logger::LEVEL_ERROR, array(
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => defined('WP_DEBUG') && WP_DEBUG ? $e->getTraceAsString() : 'Debug disabled'
+            ));
+
+            // Fall back to WordPress default
+            return null;
+        }
     }
 
     /**
@@ -121,19 +149,47 @@ class Emailit_Mailer {
      * Main send method (public interface)
      */
     public function send($to, $subject, $message, $headers = '', $attachments = array()) {
-        // Prepare email data
-        $email_data = $this->prepare_email_data($to, $subject, $message, $headers, $attachments);
+        try {
+            // Debug logging
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Emailit send method called', Emailit_Logger::LEVEL_DEBUG, array(
+                    'to' => $to,
+                    'subject' => $subject
+                ));
+            }
 
-        // Apply filter to allow modification
-        $email_data = apply_filters('emailit_email_data', $email_data, $to, $subject, $message, $headers, $attachments);
+            // Prepare email data
+            $email_data = $this->prepare_email_data($to, $subject, $message, $headers, $attachments);
 
-        // Check if we should send via Emailit
-        if (!$this->should_send_via_emailit($email_data)) {
+            // Apply filter to allow modification
+            $email_data = apply_filters('emailit_email_data', $email_data, $to, $subject, $message, $headers, $attachments);
+
+            // Check if we should send via Emailit
+            if (!$this->should_send_via_emailit($email_data)) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    $this->logger->log('Falling back to wp_mail', Emailit_Logger::LEVEL_DEBUG);
+                }
+                return $this->fallback_to_wp_mail($to, $subject, $message, $headers, $attachments);
+            }
+
+            // Debug logging
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Sending via Emailit API', Emailit_Logger::LEVEL_DEBUG);
+            }
+
+            return $this->send_email_data($email_data);
+        } catch (Exception $e) {
+            // Always log critical errors
+            $this->logger->log('CRITICAL: Exception in send method', Emailit_Logger::LEVEL_ERROR, array(
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => defined('WP_DEBUG') && WP_DEBUG ? $e->getTraceAsString() : 'Debug disabled'
+            ));
+
+            // Fall back to WordPress default
             return $this->fallback_to_wp_mail($to, $subject, $message, $headers, $attachments);
         }
-
-        // Send email
-        return $this->send_email_data($email_data);
     }
 
     /**
@@ -217,45 +273,57 @@ class Emailit_Mailer {
             }
         }
 
-        // Build email data
+        // Build email data with sanitization
         $email_data = array(
-            'to' => $to,
-            'subject' => $subject,
-            'message' => $message,
+            'to' => is_array($to) ? array_map('sanitize_email', array_filter($to, 'is_email')) : (is_email($to) ? sanitize_email($to) : ''),
+            'subject' => $this->sanitize_subject($subject),
+            'message' => $message, // Message content handled by content type
             'content_type' => $content_type,
             'headers' => $parsed_headers,
             'attachments' => $attachments
         );
 
-        // Add from information
+        // Add from information with validation
         if (isset($parsed_headers['From'])) {
             if (preg_match('/^(.+?)\s*<(.+?)>$/', $parsed_headers['From'], $matches)) {
-                $email_data['from_name'] = trim($matches[1], '"\'');
-                $email_data['from'] = trim($matches[2]);
+                $from_name = trim($matches[1], '"\'');
+                $from_email = trim($matches[2]);
+
+                // Validate email address
+                if (is_email($from_email)) {
+                    $email_data['from_name'] = sanitize_text_field($from_name);
+                    $email_data['from'] = sanitize_email($from_email);
+                }
             } else {
-                $email_data['from'] = $parsed_headers['From'];
+                $from_email = trim($parsed_headers['From']);
+                if (is_email($from_email)) {
+                    $email_data['from'] = sanitize_email($from_email);
+                }
             }
         }
 
-        // Add reply-to
+        // Add reply-to with validation
         if (isset($parsed_headers['Reply-To'])) {
-            $email_data['reply_to'] = $parsed_headers['Reply-To'];
+            $reply_to = trim($parsed_headers['Reply-To']);
+            if (is_email($reply_to)) {
+                $email_data['reply_to'] = sanitize_email($reply_to);
+            }
         }
 
-        // Add CC/BCC
+        // Add CC/BCC with validation
         if (isset($parsed_headers['Cc'])) {
-            $email_data['cc'] = $parsed_headers['Cc'];
+            $email_data['cc'] = $this->sanitize_email_list($parsed_headers['Cc']);
         }
 
         if (isset($parsed_headers['Bcc'])) {
-            $email_data['bcc'] = $parsed_headers['Bcc'];
+            $email_data['bcc'] = $this->sanitize_email_list($parsed_headers['Bcc']);
         }
 
         return $email_data;
     }
 
     /**
-     * Parse email headers
+     * Parse email headers with security sanitization
      */
     private function parse_headers($headers) {
         $parsed = array();
@@ -264,7 +332,12 @@ class Emailit_Mailer {
             foreach ($headers as $header) {
                 if (strpos($header, ':') !== false) {
                     list($name, $value) = explode(':', $header, 2);
-                    $parsed[trim($name)] = trim($value);
+                    $name = $this->sanitize_header_name(trim($name));
+                    $value = $this->sanitize_header_value(trim($value));
+
+                    if ($name && $value !== false) {
+                        $parsed[$name] = $value;
+                    }
                 }
             }
         } elseif (is_string($headers) && !empty($headers)) {
@@ -273,12 +346,109 @@ class Emailit_Mailer {
                 $header = trim($header);
                 if (!empty($header) && strpos($header, ':') !== false) {
                     list($name, $value) = explode(':', $header, 2);
-                    $parsed[trim($name)] = trim($value);
+                    $name = $this->sanitize_header_name(trim($name));
+                    $value = $this->sanitize_header_value(trim($value));
+
+                    if ($name && $value !== false) {
+                        $parsed[$name] = $value;
+                    }
                 }
             }
         }
 
         return $parsed;
+    }
+
+    /**
+     * Sanitize header name to prevent injection
+     */
+    private function sanitize_header_name($name) {
+        // Remove any characters that aren't allowed in header names
+        $name = preg_replace('/[^\x21-\x39\x3B-\x7E]/', '', $name);
+
+        // Validate against common header names
+        $allowed_headers = array(
+            'From', 'Reply-To', 'To', 'Cc', 'Bcc', 'Subject',
+            'Content-Type', 'Content-Transfer-Encoding', 'MIME-Version',
+            'X-Priority', 'X-Mailer', 'Date', 'Message-ID'
+        );
+
+        return in_array($name, $allowed_headers, true) ? $name : '';
+    }
+
+    /**
+     * Sanitize header value to prevent injection attacks
+     */
+    private function sanitize_header_value($value) {
+        // Remove or replace dangerous characters
+        // \r and \n can be used for header injection
+        if (preg_match('/[\r\n]/', $value)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Header injection attempt detected', Emailit_Logger::LEVEL_WARNING, array(
+                    'value' => $value,
+                    'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+                ));
+            }
+            return false; // Reject the entire header
+        }
+
+        // Remove null bytes and other control characters except tab
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+
+        // Limit length to prevent abuse
+        if (strlen($value) > 1000) {
+            $value = substr($value, 0, 1000);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Sanitize comma-separated email list
+     */
+    private function sanitize_email_list($email_list) {
+        if (empty($email_list)) {
+            return '';
+        }
+
+        $emails = explode(',', $email_list);
+        $sanitized_emails = array();
+
+        foreach ($emails as $email) {
+            $email = trim($email);
+
+            // Handle "Name <email@domain.com>" format
+            if (preg_match('/^(.+?)\s*<(.+?)>$/', $email, $matches)) {
+                $email_address = trim($matches[2]);
+            } else {
+                $email_address = $email;
+            }
+
+            // Validate and sanitize
+            if (is_email($email_address)) {
+                $sanitized_emails[] = $email;
+            }
+        }
+
+        return implode(', ', $sanitized_emails);
+    }
+
+    /**
+     * Sanitize email subject line
+     */
+    private function sanitize_subject($subject) {
+        // Remove newlines that could be used for header injection
+        $subject = preg_replace('/[\r\n]/', '', $subject);
+
+        // Remove null bytes and other dangerous control characters
+        $subject = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $subject);
+
+        // Limit length to reasonable maximum
+        if (strlen($subject) > 255) {
+            $subject = substr($subject, 0, 255);
+        }
+
+        return trim($subject);
     }
 
     /**
@@ -353,6 +523,17 @@ class Emailit_Mailer {
      * Check if email should be sent via Emailit
      */
     public function should_send_via_emailit($email_data, $phpmailer = null) {
+        // Type safety check
+        if (!is_array($email_data)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $this->logger->log('Invalid email_data type passed to should_send_via_emailit', Emailit_Logger::LEVEL_WARNING, array(
+                    'type_received' => gettype($email_data),
+                    'value' => $email_data
+                ));
+            }
+            return false;
+        }
+
         // Check if Emailit is properly configured
         if (empty(get_option('emailit_api_key'))) {
             return false;
@@ -553,7 +734,8 @@ class Emailit_Mailer {
             return $this->send_email_immediately($email_data);
         }
 
-        // Log the email as queued
+        // Log the email as queued with queue reference
+        $email_data['queue_id'] = $queue_id;
         $log_id = $this->logger->log_email($email_data, null, 'queued');
 
         $this->logger->log(

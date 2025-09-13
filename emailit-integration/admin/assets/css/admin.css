@@ -7,6 +7,16 @@
     max-width: 1200px;
 }
 
+/* Tab Navigation */
+.emailit-tab-pane {
+    display: none;
+    margin-top: 20px;
+}
+
+.emailit-tab-pane.active {
+    display: block;
+}
+
 .emailit-admin-wrap h1 {
     margin-bottom: 20px;
 }
@@ -66,6 +76,81 @@
 .emailit-test-email h3 {
     margin-top: 0;
     color: #0073aa;
+}
+
+/* WordPress Test Section */
+.emailit-wordpress-test {
+    background: #f9f2f4;
+    border: 1px solid #e6a6bc;
+    border-left-width: 4px;
+    border-left-color: #d63384;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.emailit-wordpress-test h3 {
+    margin-top: 0;
+    color: #d63384;
+}
+
+/* Diagnostic Test Section */
+.emailit-diagnostic-test {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-left-width: 4px;
+    border-left-color: #fd7e14;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.emailit-diagnostic-test h3 {
+    margin-top: 0;
+    color: #fd7e14;
+}
+
+/* Queue Status Section */
+.emailit-queue-status {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-left-width: 4px;
+    border-left-color: #28a745;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.emailit-queue-status h3 {
+    margin-top: 0;
+    color: #28a745;
+}
+
+.queue-stats {
+    display: flex;
+    gap: 20px;
+    margin: 15px 0;
+}
+
+.queue-stat {
+    background: #fff;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 100px;
+    text-align: center;
+}
+
+.queue-stat strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* Performance Info Section */
+.emailit-performance-info {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-left-width: 4px;
+    border-left-color: #2196f3;
+    padding: 15px;
+    margin: 20px 0;
 }
 
 .emailit-test-result {
@@ -399,4 +484,41 @@ button:focus,
 .button:focus {
     box-shadow: 0 0 0 2px #0073aa;
     outline: none;
+}
+
+/* API Key Security Enhancements */
+#emailit_api_key {
+    font-family: 'Courier New', monospace;
+    position: relative;
+}
+
+#emailit_api_key[data-has-key="1"] {
+    background-color: #f0f9f0;
+    border-left: 4px solid #46b450;
+}
+
+#emailit_api_key:focus[data-has-key="1"] {
+    background-color: #fffbf0;
+    border-left: 4px solid #ffba00;
+}
+
+.emailit-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.emailit-status.delivered {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.emailit-status.failed {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
 }

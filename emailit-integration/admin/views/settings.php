@@ -11,11 +11,7 @@ if (!defined('ABSPATH')) {
 // Get current tab
 $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
 
-// Handle form submission
-if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
-    // WordPress will handle the settings saving
-    echo '<div class="notice notice-success is-dismissible"><p>' . __('Settings saved successfully.', 'emailit-integration') . '</p></div>';
-}
+// Handle form submission - WordPress handles this automatically via options.php
 ?>
 
 <div class="wrap emailit-admin-wrap">
@@ -23,97 +19,142 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
 
     <!-- Navigation Tabs -->
     <nav class="nav-tab-wrapper emailit-tab-nav">
-        <a href="?page=<?php echo esc_attr($_GET['page']); ?>&tab=general"
-           class="nav-tab <?php echo $current_tab === 'general' ? 'nav-tab-active' : ''; ?>">
+        <a href="#general" data-tab="general"
+           class="nav-tab <?php echo $current_tab === 'general' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('General', 'emailit-integration'); ?>
         </a>
-        <a href="?page=<?php echo esc_attr($_GET['page']); ?>&tab=advanced"
-           class="nav-tab <?php echo $current_tab === 'advanced' ? 'nav-tab-active' : ''; ?>">
+        <a href="#performance" data-tab="performance"
+           class="nav-tab <?php echo $current_tab === 'performance' ? 'nav-tab-active active' : ''; ?>">
+            <?php _e('Performance', 'emailit-integration'); ?>
+        </a>
+        <a href="#advanced" data-tab="advanced"
+           class="nav-tab <?php echo $current_tab === 'advanced' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Advanced', 'emailit-integration'); ?>
         </a>
-        <a href="?page=<?php echo esc_attr($_GET['page']); ?>&tab=webhook"
-           class="nav-tab <?php echo $current_tab === 'webhook' ? 'nav-tab-active' : ''; ?>">
+        <a href="#webhook" data-tab="webhook"
+           class="nav-tab <?php echo $current_tab === 'webhook' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Webhook', 'emailit-integration'); ?>
         </a>
-        <a href="?page=<?php echo esc_attr($_GET['page']); ?>&tab=test"
-           class="nav-tab <?php echo $current_tab === 'test' ? 'nav-tab-active' : ''; ?>">
+        <a href="#test" data-tab="test"
+           class="nav-tab <?php echo $current_tab === 'test' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Test', 'emailit-integration'); ?>
         </a>
     </nav>
 
     <form method="post" action="options.php">
         <?php
-        settings_fields('emailit_settings');
-        wp_nonce_field('emailit_settings_nonce');
+        settings_fields('emailit-settings');
         ?>
 
-        <?php if ($current_tab === 'general') : ?>
-            <!-- General Settings Tab -->
-            <div class="emailit-tab-content">
-                <h2><?php _e('API Configuration', 'emailit-integration'); ?></h2>
-                <table class="form-table emailit-form-table" role="presentation">
-                    <tbody>
-                        <?php do_settings_fields('emailit_settings', 'emailit_api_section'); ?>
-                    </tbody>
-                </table>
+        <!-- General Settings Tab -->
+        <div id="general" class="emailit-tab-pane <?php echo $current_tab === 'general' ? 'active' : ''; ?>">
+            <h2><?php _e('API Configuration', 'emailit-integration'); ?></h2>
+            <table class="form-table emailit-form-table" role="presentation">
+                <tbody>
+                    <?php do_settings_fields('emailit-settings', 'emailit_api_section'); ?>
+                </tbody>
+            </table>
 
-                <h2><?php _e('Email Settings', 'emailit-integration'); ?></h2>
-                <table class="form-table emailit-form-table" role="presentation">
-                    <tbody>
-                        <?php do_settings_fields('emailit_settings', 'emailit_email_section'); ?>
-                    </tbody>
-                </table>
+            <h2><?php _e('Email Settings', 'emailit-integration'); ?></h2>
+            <table class="form-table emailit-form-table" role="presentation">
+                <tbody>
+                    <?php do_settings_fields('emailit-settings', 'emailit_email_section'); ?>
+                </tbody>
+            </table>
 
-                <h2><?php _e('Logging Settings', 'emailit-integration'); ?></h2>
-                <table class="form-table emailit-form-table" role="presentation">
-                    <tbody>
-                        <?php do_settings_fields('emailit_settings', 'emailit_logging_section'); ?>
-                    </tbody>
-                </table>
+            <h2><?php _e('Logging Settings', 'emailit-integration'); ?></h2>
+            <table class="form-table emailit-form-table" role="presentation">
+                <tbody>
+                    <?php do_settings_fields('emailit-settings', 'emailit_logging_section'); ?>
+                </tbody>
+            </table>
 
-                <?php submit_button(); ?>
+            <?php submit_button(); ?>
+        </div>
+
+        <!-- Performance & Queue Settings Tab -->
+        <div id="performance" class="emailit-tab-pane <?php echo $current_tab === 'performance' ? 'active' : ''; ?>">
+            <h2><?php _e('Performance & Queue Settings', 'emailit-integration'); ?></h2>
+
+            <div class="emailit-performance-info">
+                <p><?php _e('Configure asynchronous email processing for improved site performance.', 'emailit-integration'); ?></p>
             </div>
 
-        <?php elseif ($current_tab === 'advanced') : ?>
-            <!-- Advanced Settings Tab -->
-            <div class="emailit-tab-content">
-                <h2><?php _e('Advanced Settings', 'emailit-integration'); ?></h2>
-                <table class="form-table emailit-form-table" role="presentation">
-                    <tbody>
-                        <?php do_settings_fields('emailit_settings', 'emailit_advanced_section'); ?>
-                    </tbody>
-                </table>
+            <table class="form-table emailit-form-table" role="presentation">
+                <tbody>
+                    <?php do_settings_fields('emailit-settings', 'emailit_performance_section'); ?>
+                </tbody>
+            </table>
 
-                <?php submit_button(); ?>
+            <div class="emailit-queue-status">
+                <h3><?php _e('Queue Status', 'emailit-integration'); ?></h3>
+                <div id="queue-status-info">
+                    <div class="queue-stats">
+                        <span class="queue-stat">
+                            <strong><?php _e('Pending:', 'emailit-integration'); ?></strong>
+                            <span id="queue-pending">-</span>
+                        </span>
+                        <span class="queue-stat">
+                            <strong><?php _e('Processing:', 'emailit-integration'); ?></strong>
+                            <span id="queue-processing">-</span>
+                        </span>
+                        <span class="queue-stat">
+                            <strong><?php _e('Failed:', 'emailit-integration'); ?></strong>
+                            <span id="queue-failed">-</span>
+                        </span>
+                    </div>
+                    <p>
+                        <button type="button" id="refresh-queue-stats" class="button button-secondary">
+                            <?php _e('Refresh Stats', 'emailit-integration'); ?>
+                        </button>
+                        <button type="button" id="process-queue-now" class="button button-secondary">
+                            <?php _e('Process Queue Now', 'emailit-integration'); ?>
+                        </button>
+                    </p>
+                </div>
             </div>
 
-        <?php elseif ($current_tab === 'webhook') : ?>
-            <!-- Webhook Settings Tab -->
-            <div class="emailit-tab-content">
-                <h2><?php _e('Webhook Configuration', 'emailit-integration'); ?></h2>
+            <?php submit_button(); ?>
+        </div>
 
-                <div class="emailit-webhook-info">
-                    <p><?php _e('Configure webhooks to receive real-time email status updates from Emailit.', 'emailit-integration'); ?></p>
+        <!-- Advanced Settings Tab -->
+        <div id="advanced" class="emailit-tab-pane <?php echo $current_tab === 'advanced' ? 'active' : ''; ?>">
+            <h2><?php _e('Advanced Settings', 'emailit-integration'); ?></h2>
+            <table class="form-table emailit-form-table" role="presentation">
+                <tbody>
+                    <?php do_settings_fields('emailit-settings', 'emailit_advanced_section'); ?>
+                </tbody>
+            </table>
 
-                    <table class="form-table emailit-form-table" role="presentation">
-                        <tbody>
-                            <tr>
-                                <th scope="row">
-                                    <label><?php _e('Webhook URL', 'emailit-integration'); ?></label>
-                                </th>
-                                <td>
-                                    <code id="webhook-url"><?php echo esc_url(rest_url('emailit/v1/webhook')); ?></code>
-                                    <button type="button" class="button button-secondary" onclick="copyToClipboard('webhook-url')">
-                                        <?php _e('Copy', 'emailit-integration'); ?>
-                                    </button>
-                                    <p class="description">
-                                        <?php _e('Use this URL in your Emailit dashboard to configure webhooks.', 'emailit-integration'); ?>
-                                    </p>
-                                </td>
-                            </tr>
-                            <?php do_settings_fields('emailit_settings', 'emailit_advanced_section'); ?>
-                        </tbody>
-                    </table>
+            <?php submit_button(); ?>
+        </div>
+
+        <!-- Webhook Settings Tab -->
+        <div id="webhook" class="emailit-tab-pane <?php echo $current_tab === 'webhook' ? 'active' : ''; ?>">
+            <h2><?php _e('Webhook Configuration', 'emailit-integration'); ?></h2>
+
+            <div class="emailit-webhook-info">
+                <p><?php _e('Configure webhooks to receive real-time email status updates from Emailit.', 'emailit-integration'); ?></p>
+
+                <table class="form-table emailit-form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row">
+                                <label><?php _e('Webhook URL', 'emailit-integration'); ?></label>
+                            </th>
+                            <td>
+                                <code id="webhook-url"><?php echo esc_url(rest_url('emailit/v1/webhook')); ?></code>
+                                <button type="button" class="button button-secondary" onclick="copyToClipboard('webhook-url')">
+                                    <?php _e('Copy', 'emailit-integration'); ?>
+                                </button>
+                                <p class="description">
+                                    <?php _e('Use this URL in your Emailit dashboard to configure webhooks.', 'emailit-integration'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <?php do_settings_fields('emailit-settings', 'emailit_webhook_section'); ?>
+                    </tbody>
+                </table>
 
                     <!-- Webhook Filtering Information -->
                     <div class="emailit-webhook-filtering">
@@ -198,11 +239,10 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                 </div>
 
                 <?php submit_button(); ?>
-            </div>
+        </div>
 
-        <?php elseif ($current_tab === 'test') : ?>
-            <!-- Test Tab -->
-            <div class="emailit-tab-content">
+        <!-- Test Settings Tab -->
+        <div id="test" class="emailit-tab-pane <?php echo $current_tab === 'test' ? 'active' : ''; ?>">
                 <div class="emailit-test-email">
                     <h3><?php _e('Send Test Email', 'emailit-integration'); ?></h3>
                     <p><?php _e('Send a test email to verify your Emailit integration is working correctly.', 'emailit-integration'); ?></p>
@@ -231,6 +271,57 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                     </p>
 
                     <div id="emailit-test-result" class="emailit-test-result" style="display: none;"></div>
+                </div>
+
+                <!-- WordPress wp_mail Test -->
+                <div class="emailit-wordpress-test">
+                    <h3><?php _e('WordPress Email Test', 'emailit-integration'); ?></h3>
+                    <p><?php _e('Send a test email through WordPress wp_mail() function to diagnose integration issues. This test uses the same path as contact forms and other WordPress features.', 'emailit-integration'); ?></p>
+
+                    <table class="form-table">
+                        <tbody>
+                            <tr>
+                                <th scope="row">
+                                    <label for="emailit_wordpress_test_email"><?php _e('Test Email Address', 'emailit-integration'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="email" id="emailit_wordpress_test_email" class="regular-text"
+                                           value="<?php echo esc_attr(get_bloginfo('admin_email')); ?>" />
+                                    <p class="description">
+                                        <?php _e('Email address to send the WordPress test email to.', 'emailit-integration'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p>
+                        <button type="button" id="emailit-wordpress-test" class="button button-secondary">
+                            <?php _e('Send WordPress Test Email', 'emailit-integration'); ?>
+                        </button>
+                        <span class="description" style="margin-left: 10px;">
+                            <?php _e('This will help diagnose critical errors during email sending.', 'emailit-integration'); ?>
+                        </span>
+                    </p>
+
+                    <div id="emailit-wordpress-test-result" class="emailit-test-result" style="display: none;"></div>
+                </div>
+
+                <!-- Diagnostic Test -->
+                <div class="emailit-diagnostic-test">
+                    <h3><?php _e('Plugin Diagnostic', 'emailit-integration'); ?></h3>
+                    <p><?php _e('Test if the plugin is loading correctly and AJAX functionality is working.', 'emailit-integration'); ?></p>
+
+                    <p>
+                        <button type="button" id="emailit-diagnostic" class="button button-secondary">
+                            <?php _e('Run Diagnostic Test', 'emailit-integration'); ?>
+                        </button>
+                        <span class="description" style="margin-left: 10px;">
+                            <?php _e('This will help identify plugin loading issues.', 'emailit-integration'); ?>
+                        </span>
+                    </p>
+
+                    <div id="emailit-diagnostic-result" class="emailit-test-result" style="display: none;"></div>
                 </div>
 
                 <!-- Email Statistics -->
@@ -338,9 +429,7 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                         </tbody>
                     </table>
                 </div>
-            </div>
-
-        <?php endif; ?>
+        </div>
     </form>
 </div>
 
@@ -372,6 +461,15 @@ jQuery(document).ready(function($) {
             $button.prop('disabled', false).text('<?php _e('Test Webhook', 'emailit-integration'); ?>');
             $result.show();
         });
+    });
+
+    // Prevent form submission when pressing Enter on test email field
+    $('#emailit_test_email').on('keypress', function(e) {
+        if (e.which === 13 || e.keyCode === 13) { // Enter key
+            e.preventDefault();
+            $('#emailit-test-email').trigger('click'); // Trigger test email button instead
+            return false;
+        }
     });
 
     // Copy to clipboard functionality

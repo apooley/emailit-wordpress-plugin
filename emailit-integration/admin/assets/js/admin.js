@@ -25,6 +25,12 @@
         bindEvents: function() {
             // Test email functionality
             $(document).on('click', '#emailit-test-email', this.sendTestEmail);
+            $(document).on('click', '#emailit-wordpress-test', this.sendWordPressTest);
+            $(document).on('click', '#emailit-diagnostic', this.runDiagnostic);
+
+            // Queue management
+            $(document).on('click', '#refresh-queue-stats', this.refreshQueueStats);
+            $(document).on('click', '#process-queue-now', this.processQueueNow);
 
             // Log actions
             $(document).on('click', '.emailit-view-log', this.viewLogDetails);
@@ -39,6 +45,10 @@
 
             // Settings changes
             $(document).on('change', '#emailit_enable_logging', this.toggleLoggingOptions);
+
+            // API key field enhancements
+            $(document).on('focus', '#emailit_api_key', this.handleApiKeyFocus);
+            $(document).on('input', '#emailit_api_key', this.handleApiKeyInput);
         },
 
         /**
@@ -49,14 +59,21 @@
                 e.preventDefault();
 
                 var target = $(this).attr('href');
+                var tabName = $(this).data('tab');
 
-                // Update nav
-                $('.emailit-tab-nav a').removeClass('active');
-                $(this).addClass('active');
+                // Update nav - remove both WordPress and custom active classes
+                $('.emailit-tab-nav a').removeClass('nav-tab-active active');
+                $(this).addClass('nav-tab-active active');
 
                 // Update content
                 $('.emailit-tab-pane').removeClass('active');
                 $(target).addClass('active');
+
+                // Update URL without page reload
+                if (history.pushState) {
+                    var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?page=' + encodeURIComponent(getUrlParameter('page')) + '&tab=' + encodeURIComponent(tabName);
+                    window.history.pushState({}, '', newUrl);
+                }
             });
         },
 
@@ -112,6 +129,177 @@
                 })
                 .always(function() {
                     $button.prop('disabled', false).text('Send Test Email');
+                });
+        },
+
+        /**
+         * Send WordPress wp_mail test email
+         */
+        sendWordPressTest: function(e) {
+            e.preventDefault();
+
+            var $button = $(this);
+            var $result = $('#emailit-wordpress-test-result');
+
+            // Get form data
+            var data = {
+                action: 'emailit_send_wordpress_test',
+                nonce: emailit_ajax.nonce,
+                test_email: $('#emailit_wordpress_test_email').val() || emailit_ajax.strings.admin_email
+            };
+
+            // Show loading
+            $button.prop('disabled', true).text('Sending WordPress Test...');
+            $result.hide().removeClass('success error');
+
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        var message = '<strong>Success:</strong> ' + response.data.message;
+                        if (response.data.details) {
+                            message += '<br><small><strong>Details:</strong> Sent via ' + response.data.details.method +
+                                      ' to ' + response.data.details.to + ' at ' + response.data.details.timestamp + '</small>';
+                        }
+                        $result
+                            .addClass('success')
+                            .html(message)
+                            .show();
+                    } else {
+                        var errorMessage = '<strong>Error:</strong> ' + response.data.message;
+                        if (response.data.technical_details) {
+                            errorMessage += '<br><small><strong>Technical Details:</strong> ' +
+                                          response.data.technical_details.file + ':' + response.data.technical_details.line + '</small>';
+                        }
+                        $result
+                            .addClass('error')
+                            .html(errorMessage)
+                            .show();
+                    }
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    $result
+                        .addClass('error')
+                        .html('<strong>Critical Error:</strong> WordPress test email failed completely. ' +
+                              'Error: ' + textStatus + ' - ' + errorThrown + '<br>' +
+                              '<small>Check the WordPress error logs and Emailit logs for more details.</small>')
+                        .show();
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Send WordPress Test Email');
+                });
+        },
+
+        /**
+         * Run plugin diagnostic test
+         */
+        runDiagnostic: function(e) {
+            e.preventDefault();
+
+            var $button = $(this);
+            var $result = $('#emailit-diagnostic-result');
+
+            // Get form data
+            var data = {
+                action: 'emailit_diagnostic',
+                nonce: emailit_ajax.nonce
+            };
+
+            // Show loading
+            $button.prop('disabled', true).text('Running Diagnostic...');
+            $result.hide().removeClass('success error');
+
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        var message = '<strong>Success:</strong> ' + response.data.message;
+                        message += '<br><strong>Diagnostic Information:</strong><ul>';
+                        $.each(response.data.diagnostic_info, function(key, value) {
+                            var displayValue = (typeof value === 'boolean') ? (value ? 'Yes' : 'No') : value;
+                            message += '<li><strong>' + key + ':</strong> ' + displayValue + '</li>';
+                        });
+                        message += '</ul>';
+                        $result
+                            .addClass('success')
+                            .html(message)
+                            .show();
+                    } else {
+                        $result
+                            .addClass('error')
+                            .html('<strong>Error:</strong> ' + response.data.message)
+                            .show();
+                    }
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    $result
+                        .addClass('error')
+                        .html('<strong>Critical Error:</strong> Diagnostic test failed completely. ' +
+                              'Error: ' + textStatus + ' - ' + errorThrown + '<br>' +
+                              '<strong>Status Code:</strong> ' + jqXHR.status + '<br>' +
+                              '<strong>Response:</strong> ' + jqXHR.responseText.substring(0, 500) + '<br>' +
+                              '<small>This indicates a fundamental plugin loading issue or PHP fatal error.</small>')
+                        .show();
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Run Diagnostic Test');
+                });
+        },
+
+        /**
+         * Refresh queue statistics
+         */
+        refreshQueueStats: function(e) {
+            e.preventDefault();
+
+            var $button = $(this);
+            var data = {
+                action: 'emailit_get_queue_stats',
+                nonce: emailit_ajax.nonce
+            };
+
+            $button.prop('disabled', true).text('Refreshing...');
+
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        $('#queue-pending').text(response.data.pending || 0);
+                        $('#queue-processing').text(response.data.processing || 0);
+                        $('#queue-failed').text(response.data.failed || 0);
+                    }
+                })
+                .fail(function() {
+                    // Handle failure silently, just reset button
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Refresh Stats');
+                });
+        },
+
+        /**
+         * Process queue manually
+         */
+        processQueueNow: function(e) {
+            e.preventDefault();
+
+            var $button = $(this);
+            var data = {
+                action: 'emailit_process_queue_now',
+                nonce: emailit_ajax.nonce
+            };
+
+            $button.prop('disabled', true).text('Processing...');
+
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        // Refresh stats after processing
+                        $('#refresh-queue-stats').click();
+                    }
+                })
+                .fail(function() {
+                    // Handle failure silently
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Process Queue Now');
                 });
         },
 
@@ -319,6 +507,37 @@
         },
 
         /**
+         * Handle API key field focus
+         */
+        handleApiKeyFocus: function() {
+            var $field = $(this);
+            var hasKey = $field.data('has-key') === '1';
+
+            if (hasKey) {
+                // Clear placeholder dots when focusing to enter new key
+                if ($field.val() === '••••••••••••••••••••••••••••••••') {
+                    $field.val('');
+                    $field.attr('placeholder', 'Enter new API key to replace existing key');
+                }
+            }
+        },
+
+        /**
+         * Handle API key field input
+         */
+        handleApiKeyInput: function() {
+            var $field = $(this);
+            var value = $field.val();
+            var hasKey = $field.data('has-key') === '1';
+
+            // Update data attribute to reflect that we're entering a new key
+            if (value.length > 0 && value !== '••••••••••••••••••••••••••••••••') {
+                $field.data('has-key', '0');
+                $field.attr('placeholder', 'Enter your Emailit API key');
+            }
+        },
+
+        /**
          * Format date for display
          */
         formatDate: function(dateString) {
@@ -326,6 +545,16 @@
             return date.toLocaleString();
         }
     };
+
+    /**
+     * Helper function to get URL parameter
+     */
+    function getUrlParameter(name) {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        var results = regex.exec(location.search);
+        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+    }
 
     /**
      * Statistics Chart (if needed)
