@@ -23,6 +23,11 @@ class Emailit_Admin {
     private $logger;
 
     /**
+     * Queue instance
+     */
+    private $queue;
+
+    /**
      * Settings page slug
      */
     private $settings_page = 'emailit-settings';
@@ -35,9 +40,10 @@ class Emailit_Admin {
     /**
      * Constructor
      */
-    public function __construct($api, $logger) {
+    public function __construct($api, $logger, $queue = null) {
         $this->api = $api;
         $this->logger = $logger;
+        $this->queue = $queue;
     }
 
     /**
@@ -52,7 +58,10 @@ class Emailit_Admin {
         add_action('wp_ajax_emailit_get_log_details', array($this, 'ajax_get_log_details'));
         add_action('wp_ajax_emailit_delete_log', array($this, 'ajax_delete_log'));
         add_action('wp_ajax_emailit_resend_email', array($this, 'ajax_resend_email'));
+        add_action('wp_ajax_emailit_bulk_resend', array($this, 'ajax_bulk_resend'));
+        add_action('wp_ajax_emailit_cleanup_logs', array($this, 'ajax_cleanup_logs'));
         add_action('wp_ajax_emailit_get_stats', array($this, 'ajax_get_stats'));
+        add_action('wp_ajax_emailit_export_logs', array($this, 'ajax_export_logs'));
 
         // Add admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
@@ -500,6 +509,191 @@ class Emailit_Admin {
     }
 
     /**
+     * AJAX handler for bulk resend emails
+     */
+    public function ajax_bulk_resend() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $log_ids = isset($_POST['log_ids']) ? array_map('intval', $_POST['log_ids']) : array();
+
+        if (empty($log_ids)) {
+            wp_send_json_error(array(
+                'message' => __('No emails selected for resend.', 'emailit-integration')
+            ));
+        }
+
+        if (count($log_ids) > 50) {
+            wp_send_json_error(array(
+                'message' => __('Maximum 50 emails can be resent at once.', 'emailit-integration')
+            ));
+        }
+
+        $mailer = emailit_get_component('mailer');
+        $successes = 0;
+        $failures = 0;
+        $errors = array();
+
+        foreach ($log_ids as $log_id) {
+            $result = $mailer->resend_email($log_id);
+
+            if (is_wp_error($result)) {
+                $failures++;
+                $errors[] = sprintf(__('Log ID %d: %s', 'emailit-integration'), $log_id, $result->get_error_message());
+            } else {
+                $successes++;
+            }
+
+            // Add small delay to prevent API rate limiting
+            usleep(100000); // 0.1 second delay
+        }
+
+        $message = sprintf(
+            __('Bulk resend completed: %d successful, %d failed.', 'emailit-integration'),
+            $successes,
+            $failures
+        );
+
+        if (!empty($errors)) {
+            $message .= ' ' . __('Errors:', 'emailit-integration') . ' ' . implode('; ', array_slice($errors, 0, 3));
+            if (count($errors) > 3) {
+                $message .= sprintf(__(' and %d more...', 'emailit-integration'), count($errors) - 3);
+            }
+        }
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'successes' => $successes,
+            'failures' => $failures
+        ));
+    }
+
+    /**
+     * AJAX handler for manual log cleanup
+     */
+    public function ajax_cleanup_logs() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $result = $this->logger->cleanup_logs();
+
+        if ($result !== false) {
+            $message = sprintf(
+                __('Log cleanup completed: %d email logs and %d webhook logs deleted.', 'emailit-integration'),
+                $result['email_logs_deleted'],
+                $result['webhook_logs_deleted']
+            );
+
+            wp_send_json_success(array('message' => $message));
+        } else {
+            wp_send_json_error(array(
+                'message' => __('Log cleanup failed. Please try again.', 'emailit-integration')
+            ));
+        }
+    }
+
+    /**
+     * AJAX handler for exporting logs
+     */
+    public function ajax_export_logs() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $format = isset($_POST['format']) ? sanitize_text_field($_POST['format']) : 'csv';
+        $status_filter = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
+        $date_from = isset($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : '';
+        $date_to = isset($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : '';
+
+        $args = array(
+            'per_page' => 1000, // Limit export size
+            'page' => 1,
+            'status' => $status_filter,
+            'date_from' => $date_from,
+            'date_to' => $date_to
+        );
+
+        $logs_data = $this->logger->get_logs($args);
+        $logs = $logs_data['logs'];
+
+        if (empty($logs)) {
+            wp_send_json_error(array(
+                'message' => __('No logs found matching the criteria.', 'emailit-integration')
+            ));
+        }
+
+        $filename = 'emailit-logs-' . date('Y-m-d-H-i-s') . '.' . $format;
+
+        if ($format === 'csv') {
+            $this->export_logs_csv($logs, $filename);
+        } else {
+            $this->export_logs_json($logs, $filename);
+        }
+    }
+
+    /**
+     * Export logs as CSV
+     */
+    private function export_logs_csv($logs, $filename) {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $output = fopen('php://output', 'w');
+
+        // CSV headers
+        fputcsv($output, array(
+            'ID',
+            'Date',
+            'To',
+            'From',
+            'Subject',
+            'Status',
+            'Email ID',
+            'Sent At'
+        ));
+
+        // CSV data
+        foreach ($logs as $log) {
+            fputcsv($output, array(
+                $log['id'],
+                $log['created_at'],
+                $log['to_email'],
+                $log['from_email'],
+                $log['subject'],
+                $log['status'],
+                $log['email_id'],
+                $log['sent_at']
+            ));
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    /**
+     * Export logs as JSON
+     */
+    private function export_logs_json($logs, $filename) {
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        echo wp_json_encode($logs, JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    /**
      * Admin notices
      */
     public function admin_notices() {
@@ -526,6 +720,186 @@ class Emailit_Admin {
                 echo '</div>';
             }
         }
+
+        // Check for plugin conflicts
+        $conflicts = $this->check_plugin_conflicts();
+        if (!empty($conflicts)) {
+            echo '<div class="notice notice-warning is-dismissible">';
+            echo '<p><strong>' . __('Emailit Integration: Plugin Conflict Detected', 'emailit-integration') . '</strong></p>';
+            echo '<p>' . __('The following plugins may interfere with email delivery:', 'emailit-integration') . '</p>';
+            echo '<ul style="margin-left: 20px;">';
+            foreach ($conflicts as $conflict) {
+                echo '<li><strong>' . esc_html($conflict['name']) . '</strong> - ' . esc_html($conflict['reason']) . '</li>';
+            }
+            echo '</ul>';
+            echo '<p>' . sprintf(
+                __('Please review your email settings or <a href="%s">contact support</a> if you experience delivery issues.', 'emailit-integration'),
+                admin_url('options-general.php?page=' . $this->settings_page . '&tab=test')
+            ) . '</p>';
+            echo '</div>';
+        }
+    }
+
+    /**
+     * Get plugin conflicts (public method for templates)
+     */
+    public function get_plugin_conflicts() {
+        return $this->check_plugin_conflicts();
+    }
+
+    /**
+     * Check for plugin conflicts with wp_mail
+     */
+    private function check_plugin_conflicts() {
+        $conflicts = array();
+
+        // Check for common SMTP/email plugins that might conflict
+        $smtp_plugins = array(
+            'wp-mail-smtp/wp_mail_smtp.php' => array(
+                'name' => 'WP Mail SMTP',
+                'reason' => __('May override wp_mail() function', 'emailit-integration')
+            ),
+            'easy-wp-smtp/easy-wp-smtp.php' => array(
+                'name' => 'Easy WP SMTP',
+                'reason' => __('SMTP configuration may conflict', 'emailit-integration')
+            ),
+            'wp-smtp/wp-smtp.php' => array(
+                'name' => 'WP SMTP',
+                'reason' => __('SMTP settings may interfere', 'emailit-integration')
+            ),
+            'post-smtp/postman-smtp.php' => array(
+                'name' => 'Post SMTP Mailer',
+                'reason' => __('May replace wp_mail() functionality', 'emailit-integration')
+            ),
+            'gmail-smtp/gmail-smtp.php' => array(
+                'name' => 'Gmail SMTP',
+                'reason' => __('Gmail SMTP may take precedence', 'emailit-integration')
+            ),
+            'wp-ses/wp-ses.php' => array(
+                'name' => 'WP SES',
+                'reason' => __('Amazon SES integration may conflict', 'emailit-integration')
+            ),
+            'sendgrid-email-delivery-simplified/sendgrid.php' => array(
+                'name' => 'SendGrid',
+                'reason' => __('SendGrid API may override emails', 'emailit-integration')
+            ),
+            'mailgun/mailgun.php' => array(
+                'name' => 'Mailgun',
+                'reason' => __('Mailgun API integration may conflict', 'emailit-integration')
+            ),
+            'wp-mailgun-smtp/wp-mailgun-smtp.php' => array(
+                'name' => 'WP Mailgun SMTP',
+                'reason' => __('Mailgun SMTP may interfere', 'emailit-integration')
+            ),
+            'fluent-smtp/fluent-smtp.php' => array(
+                'name' => 'FluentSMTP',
+                'reason' => __('SMTP configuration may conflict', 'emailit-integration')
+            )
+        );
+
+        // Check if any conflicting plugins are active
+        foreach ($smtp_plugins as $plugin_path => $plugin_info) {
+            if (is_plugin_active($plugin_path)) {
+                $conflicts[] = $plugin_info;
+            }
+        }
+
+        // Check for functions that might override wp_mail
+        $this->check_wp_mail_overrides($conflicts);
+
+        // Check for PHPMailer modifications
+        $this->check_phpmailer_modifications($conflicts);
+
+        return $conflicts;
+    }
+
+    /**
+     * Check for wp_mail function overrides
+     */
+    private function check_wp_mail_overrides(&$conflicts) {
+        global $wp_filter;
+
+        // Check if wp_mail function is overridden
+        if (function_exists('wp_mail')) {
+            $reflection = new ReflectionFunction('wp_mail');
+            $filename = $reflection->getFileName();
+
+            // If wp_mail is not in wp-includes/pluggable.php, it's been overridden
+            if ($filename && strpos($filename, 'wp-includes/pluggable.php') === false) {
+                $conflicts[] = array(
+                    'name' => __('Custom wp_mail() Override', 'emailit-integration'),
+                    'reason' => sprintf(__('wp_mail() function overridden in %s', 'emailit-integration'), basename($filename))
+                );
+            }
+        }
+
+        // Check for high-priority filters on pre_wp_mail
+        if (isset($wp_filter['pre_wp_mail'])) {
+            $high_priority_filters = array();
+            foreach ($wp_filter['pre_wp_mail']->callbacks as $priority => $callbacks) {
+                if ($priority < 10) { // Our plugin uses priority 10
+                    foreach ($callbacks as $callback) {
+                        $function_name = $this->get_callback_name($callback['function']);
+                        if ($function_name && strpos($function_name, 'emailit') === false) {
+                            $high_priority_filters[] = $function_name;
+                        }
+                    }
+                }
+            }
+
+            if (!empty($high_priority_filters)) {
+                $conflicts[] = array(
+                    'name' => __('High Priority Email Filter', 'emailit-integration'),
+                    'reason' => sprintf(__('Functions with higher priority: %s', 'emailit-integration'), implode(', ', $high_priority_filters))
+                );
+            }
+        }
+    }
+
+    /**
+     * Check for PHPMailer modifications
+     */
+    private function check_phpmailer_modifications(&$conflicts) {
+        global $wp_filter;
+
+        // Check for multiple phpmailer_init hooks
+        if (isset($wp_filter['phpmailer_init'])) {
+            $phpmailer_hooks = array();
+            foreach ($wp_filter['phpmailer_init']->callbacks as $priority => $callbacks) {
+                foreach ($callbacks as $callback) {
+                    $function_name = $this->get_callback_name($callback['function']);
+                    if ($function_name && strpos($function_name, 'emailit') === false) {
+                        $phpmailer_hooks[] = $function_name;
+                    }
+                }
+            }
+
+            if (count($phpmailer_hooks) > 0) {
+                $conflicts[] = array(
+                    'name' => __('PHPMailer Modifications', 'emailit-integration'),
+                    'reason' => sprintf(__('Other plugins modifying PHPMailer: %s', 'emailit-integration'), implode(', ', array_slice($phpmailer_hooks, 0, 3)) . (count($phpmailer_hooks) > 3 ? '...' : ''))
+                );
+            }
+        }
+    }
+
+    /**
+     * Get callback function name for debugging
+     */
+    private function get_callback_name($callback) {
+        if (is_string($callback)) {
+            return $callback;
+        } elseif (is_array($callback) && count($callback) == 2) {
+            if (is_object($callback[0])) {
+                return get_class($callback[0]) . '::' . $callback[1];
+            } else {
+                return $callback[0] . '::' . $callback[1];
+            }
+        } elseif ($callback instanceof Closure) {
+            return 'Closure';
+        }
+
+        return 'Unknown';
     }
 
     /**

@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: Emailit Integration
- * Plugin URI: https://github.com/your-username/emailit-integration
+ * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
  * Version: 1.0.0
- * Author: Your Name
- * Author URI: https://your-website.com
+ * Author: Allen Pooley
+ * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: emailit-integration
@@ -46,6 +46,7 @@ class Emailit_Integration {
     private $api = null;
     private $mailer = null;
     private $logger = null;
+    private $queue = null;
     private $webhook = null;
     private $admin = null;
 
@@ -148,6 +149,7 @@ class Emailit_Integration {
         // Load core classes
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-api.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-logger.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-queue.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailer.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-webhook.php';
 
@@ -182,18 +184,21 @@ class Emailit_Integration {
         // Initialize logger first (other components may need it)
         $this->logger = new Emailit_Logger();
 
+        // Initialize queue system
+        $this->queue = new Emailit_Queue($this->logger);
+
         // Initialize API handler
         $this->api = new Emailit_API($this->logger);
 
         // Initialize mailer (wp_mail override)
-        $this->mailer = new Emailit_Mailer($this->api, $this->logger);
+        $this->mailer = new Emailit_Mailer($this->api, $this->logger, $this->queue);
 
         // Initialize webhook handler
         $this->webhook = new Emailit_Webhook($this->logger);
 
         // Initialize admin interface if in admin
         if (is_admin()) {
-            $this->admin = new Emailit_Admin($this->api, $this->logger);
+            $this->admin = new Emailit_Admin($this->api, $this->logger, $this->queue);
         }
     }
 
@@ -311,6 +316,10 @@ class Emailit_Integration {
         global $wpdb;
 
         $charset_collate = $wpdb->get_charset_collate();
+
+        // Initialize queue to create its table
+        $queue = new Emailit_Queue();
+        $queue->create_table();
 
         // Email logs table
         $table_logs = $wpdb->prefix . 'emailit_logs';

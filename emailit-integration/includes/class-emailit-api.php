@@ -18,6 +18,11 @@ class Emailit_API {
     private $logger;
 
     /**
+     * Error handler instance
+     */
+    private $error_handler;
+
+    /**
      * API endpoint
      */
     private $api_endpoint;
@@ -46,6 +51,10 @@ class Emailit_API {
         $this->timeout = (int) get_option('emailit_timeout', 30);
         $this->retry_attempts = (int) get_option('emailit_retry_attempts', 3);
 
+        // Initialize error handler
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-handler.php';
+        $this->error_handler = new Emailit_Error_Handler($this->logger);
+
         // Get API key (encrypted)
         $this->api_key = $this->get_api_key();
     }
@@ -54,14 +63,33 @@ class Emailit_API {
      * Send email via Emailit API
      */
     public function send_email($email_data) {
+        // Check circuit breaker
+        if ($this->error_handler->is_circuit_breaker_open()) {
+            return new WP_Error('circuit_breaker_open', __('Emailit API temporarily disabled due to repeated failures.', 'emailit-integration'));
+        }
+
+        // Check if API is temporarily disabled
+        $disabled_until = get_option('emailit_api_disabled_until', 0);
+        if ($disabled_until && time() < $disabled_until) {
+            return new WP_Error('api_temporarily_disabled', __('Emailit API temporarily disabled due to errors.', 'emailit-integration'));
+        }
+
+        // Check rate limiting
+        if (get_transient('emailit_rate_limited')) {
+            return new WP_Error('rate_limited', __('Emailit API rate limit in effect. Please try again later.', 'emailit-integration'));
+        }
+
         // Validate API key
         if (empty($this->api_key)) {
-            return new WP_Error('no_api_key', __('Emailit API key is not configured.', 'emailit-integration'));
+            $error = new WP_Error('no_api_key', __('Emailit API key is not configured.', 'emailit-integration'));
+            $this->error_handler->handle_error($error, array('email_data' => $email_data));
+            return $error;
         }
 
         // Validate email data
         $validation = $this->validate_email_data($email_data);
         if (is_wp_error($validation)) {
+            $this->error_handler->handle_error($validation, array('email_data' => $email_data));
             return $validation;
         }
 
@@ -179,8 +207,28 @@ class Emailit_API {
     private function send_with_retry($request_data, $attempt = 1) {
         $response = $this->make_api_request($request_data);
 
-        // If successful or max attempts reached, return response
-        if (!is_wp_error($response) || $attempt >= $this->retry_attempts) {
+        // If successful, handle success and return
+        if (!is_wp_error($response)) {
+            $this->error_handler->handle_error('success', array('attempt' => $attempt));
+            return $response;
+        }
+
+        // Handle the error
+        $error_context = array(
+            'attempt' => $attempt,
+            'max_attempts' => $this->retry_attempts,
+            'request_data' => $request_data
+        );
+
+        $error_result = $this->error_handler->handle_error($response, $error_context);
+
+        // If max attempts reached, return final error
+        if ($attempt >= $this->retry_attempts) {
+            return $response;
+        }
+
+        // Check if we should retry based on error strategy
+        if (!$error_result['should_retry']) {
             return $response;
         }
 

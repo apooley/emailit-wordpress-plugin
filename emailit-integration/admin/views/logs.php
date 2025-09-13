@@ -106,9 +106,34 @@ $stats = $logger->get_stats();
 
     <!-- Email Logs Table -->
     <?php if (!empty($logs)) : ?>
+        <form id="emailit-bulk-form" method="post">
+            <div class="tablenav top">
+                <div class="alignleft actions bulkactions">
+                    <label for="bulk-action-selector-top" class="screen-reader-text"><?php _e('Select bulk action', 'emailit-integration'); ?></label>
+                    <select name="action" id="bulk-action-selector-top">
+                        <option value="-1"><?php _e('Bulk actions', 'emailit-integration'); ?></option>
+                        <option value="resend"><?php _e('Resend Failed Emails', 'emailit-integration'); ?></option>
+                        <option value="delete"><?php _e('Delete Logs', 'emailit-integration'); ?></option>
+                    </select>
+                    <input type="submit" id="doaction" class="button action" value="<?php _e('Apply', 'emailit-integration'); ?>">
+                </div>
+
+                <div class="alignleft actions">
+                    <select id="export-format">
+                        <option value="csv"><?php _e('Export as CSV', 'emailit-integration'); ?></option>
+                        <option value="json"><?php _e('Export as JSON', 'emailit-integration'); ?></option>
+                    </select>
+                    <input type="button" id="export-logs" class="button" value="<?php _e('Export', 'emailit-integration'); ?>">
+                </div>
+            </div>
+
         <table class="wp-list-table widefat fixed striped emailit-logs-table">
             <thead>
                 <tr>
+                    <td id="cb" class="manage-column column-cb check-column">
+                        <label class="screen-reader-text" for="cb-select-all-1"><?php _e('Select All', 'emailit-integration'); ?></label>
+                        <input id="cb-select-all-1" type="checkbox" />
+                    </td>
                     <th scope="col" class="column-date"><?php _e('Date', 'emailit-integration'); ?></th>
                     <th scope="col" class="column-to"><?php _e('To', 'emailit-integration'); ?></th>
                     <th scope="col" class="column-from"><?php _e('From', 'emailit-integration'); ?></th>
@@ -120,6 +145,10 @@ $stats = $logger->get_stats();
             <tbody>
                 <?php foreach ($logs as $log) : ?>
                     <tr>
+                        <th scope="row" class="check-column">
+                            <label class="screen-reader-text" for="cb-select-<?php echo $log['id']; ?>"><?php printf(__('Select %s', 'emailit-integration'), $log['subject']); ?></label>
+                            <input id="cb-select-<?php echo $log['id']; ?>" type="checkbox" name="log_ids[]" value="<?php echo esc_attr($log['id']); ?>" />
+                        </th>
                         <td class="column-date">
                             <strong><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($log['created_at']))); ?></strong>
                             <?php if (!empty($log['sent_at'])) : ?>
@@ -174,6 +203,7 @@ $stats = $logger->get_stats();
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </form>
 
         <!-- Pagination -->
         <?php if ($total_pages > 1) : ?>
@@ -209,9 +239,9 @@ $stats = $logger->get_stats();
         </div>
     <?php endif; ?>
 
-    <!-- Bulk Actions (if needed in the future) -->
+    <!-- Maintenance Tools -->
     <div class="emailit-bulk-actions" style="margin-top: 20px;">
-        <h3><?php _e('Maintenance', 'emailit-integration'); ?></h3>
+        <h3><?php _e('Maintenance Tools', 'emailit-integration'); ?></h3>
         <p><?php _e('Use these tools to manage your email logs.', 'emailit-integration'); ?></p>
 
         <button type="button" id="cleanup-logs" class="button button-secondary">
@@ -219,6 +249,15 @@ $stats = $logger->get_stats();
         </button>
         <span class="description">
             <?php printf(__('Remove logs older than %d days (based on your retention settings).', 'emailit-integration'), get_option('emailit_log_retention_days', 30)); ?>
+        </span>
+
+        <br><br>
+
+        <button type="button" id="resend-all-failed" class="button button-secondary">
+            <?php _e('Resend All Recent Failed', 'emailit-integration'); ?>
+        </button>
+        <span class="description">
+            <?php _e('Resend all failed emails from the last 24 hours.', 'emailit-integration'); ?>
         </span>
     </div>
 </div>
@@ -265,6 +304,169 @@ jQuery(document).ready(function($) {
         .always(function() {
             $button.prop('disabled', false).text('<?php _e('Clean Old Logs', 'emailit-integration'); ?>');
         });
+    });
+
+    // Handle bulk actions
+    $('#emailit-bulk-form').on('submit', function(e) {
+        e.preventDefault();
+
+        var action = $('#bulk-action-selector-top').val();
+        var selectedIds = [];
+
+        $('input[name="log_ids[]"]:checked').each(function() {
+            selectedIds.push($(this).val());
+        });
+
+        if (action === '-1') {
+            alert('<?php _e('Please select an action.', 'emailit-integration'); ?>');
+            return;
+        }
+
+        if (selectedIds.length === 0) {
+            alert('<?php _e('Please select at least one email.', 'emailit-integration'); ?>');
+            return;
+        }
+
+        if (action === 'resend') {
+            handleBulkResend(selectedIds);
+        } else if (action === 'delete') {
+            handleBulkDelete(selectedIds);
+        }
+    });
+
+    // Handle export
+    $('#export-logs').on('click', function() {
+        var format = $('#export-format').val();
+        var data = {
+            action: 'emailit_export_logs',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>',
+            format: format,
+            status: '<?php echo esc_js($status_filter); ?>',
+            date_from: '<?php echo esc_js($date_from); ?>',
+            date_to: '<?php echo esc_js($date_to); ?>'
+        };
+
+        // Create form and submit for download
+        var form = $('<form method="post" action="<?php echo admin_url('admin-ajax.php'); ?>">');
+        $.each(data, function(key, value) {
+            form.append('<input type="hidden" name="' + key + '" value="' + value + '">');
+        });
+        $('body').append(form);
+        form.submit();
+        form.remove();
+    });
+
+    // Handle bulk resend
+    function handleBulkResend(selectedIds) {
+        if (!confirm('<?php _e('Are you sure you want to resend the selected emails?', 'emailit-integration'); ?>')) {
+            return;
+        }
+
+        var $button = $('.bulkactions .button');
+        $button.prop('disabled', true).val('<?php _e('Processing...', 'emailit-integration'); ?>');
+
+        $.post(ajaxurl, {
+            action: 'emailit_bulk_resend',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>',
+            log_ids: selectedIds
+        })
+        .done(function(response) {
+            if (response.success) {
+                alert(response.data.message);
+                location.reload();
+            } else {
+                alert('<?php _e('Error:', 'emailit-integration'); ?> ' + response.data.message);
+            }
+        })
+        .fail(function() {
+            alert('<?php _e('Failed to resend emails. Please try again.', 'emailit-integration'); ?>');
+        })
+        .always(function() {
+            $button.prop('disabled', false).val('<?php _e('Apply', 'emailit-integration'); ?>');
+        });
+    }
+
+    // Handle bulk delete
+    function handleBulkDelete(selectedIds) {
+        if (!confirm('<?php _e('Are you sure you want to delete the selected email logs? This action cannot be undone.', 'emailit-integration'); ?>')) {
+            return;
+        }
+
+        var $button = $('.bulkactions .button');
+        $button.prop('disabled', true).val('<?php _e('Processing...', 'emailit-integration'); ?>');
+
+        var completed = 0;
+        var errors = 0;
+
+        selectedIds.forEach(function(logId) {
+            $.post(ajaxurl, {
+                action: 'emailit_delete_log',
+                nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>',
+                log_id: logId
+            })
+            .done(function(response) {
+                if (response.success) {
+                    $('tr:has(input[value="' + logId + '"])').fadeOut();
+                } else {
+                    errors++;
+                }
+            })
+            .fail(function() {
+                errors++;
+            })
+            .always(function() {
+                completed++;
+                if (completed === selectedIds.length) {
+                    $button.prop('disabled', false).val('<?php _e('Apply', 'emailit-integration'); ?>');
+                    if (errors > 0) {
+                        alert('<?php _e('Some deletions failed. Please refresh the page.', 'emailit-integration'); ?>');
+                    }
+                }
+            });
+        });
+    }
+
+    // Resend all recent failed emails
+    $('#resend-all-failed').on('click', function() {
+        if (!confirm('<?php _e('Resend all failed emails from the last 24 hours?', 'emailit-integration'); ?>')) {
+            return;
+        }
+
+        var $button = $(this);
+        $button.prop('disabled', true).text('<?php _e('Processing...', 'emailit-integration'); ?>');
+
+        // Get all failed email IDs from current view
+        var failedIds = [];
+        $('tr').each(function() {
+            var $status = $(this).find('.emailit-status.failed');
+            if ($status.length > 0) {
+                var checkbox = $(this).find('input[name="log_ids[]"]');
+                if (checkbox.length > 0) {
+                    failedIds.push(checkbox.val());
+                }
+            }
+        });
+
+        if (failedIds.length === 0) {
+            alert('<?php _e('No failed emails found in current view.', 'emailit-integration'); ?>');
+            $button.prop('disabled', false).text('<?php _e('Resend All Recent Failed', 'emailit-integration'); ?>');
+            return;
+        }
+
+        handleBulkResend(failedIds);
+        $button.prop('disabled', false).text('<?php _e('Resend All Recent Failed', 'emailit-integration'); ?>');
+    });
+
+    // Select all checkbox functionality
+    $('#cb-select-all-1').on('change', function() {
+        $('input[name="log_ids[]"]').prop('checked', this.checked);
+    });
+
+    // Update select all when individual checkboxes change
+    $('input[name="log_ids[]"]').on('change', function() {
+        var total = $('input[name="log_ids[]"]').length;
+        var checked = $('input[name="log_ids[]"]:checked').length;
+        $('#cb-select-all-1').prop('checked', total === checked);
     });
 
     // Auto-refresh page every 30 seconds if there are pending emails

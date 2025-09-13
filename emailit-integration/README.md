@@ -131,6 +131,35 @@ The plugin handles the following webhook events:
 - **Capability Checks**: Admin functions require proper WordPress permissions
 - **Nonce Verification**: All forms protected with WordPress nonces
 
+## Plugin Conflict Detection
+
+The plugin automatically detects and warns about potential conflicts with other email plugins:
+
+### Detected Plugins
+- WP Mail SMTP
+- Easy WP SMTP
+- Post SMTP Mailer
+- Gmail SMTP
+- SendGrid
+- Mailgun
+- FluentSMTP
+- WP SES
+- And more...
+
+### Detection Features
+- **Active Plugin Check**: Scans for known conflicting plugins
+- **wp_mail() Override Detection**: Identifies if wp_mail() has been replaced
+- **Hook Priority Analysis**: Detects high-priority email filters that might interfere
+- **PHPMailer Modifications**: Identifies other plugins modifying PHPMailer
+- **Admin Warnings**: Displays clear warnings in admin interface
+- **System Status**: Shows detailed information about email hook status
+
+### Viewing Conflict Information
+1. Go to Settings → Emailit → Test tab
+2. View "Plugin Compatibility Check" section
+3. Review any detected conflicts and recommendations
+4. Check "System Information" for detailed hook analysis
+
 ## Logging and Debugging
 
 ### Enable Debug Logging

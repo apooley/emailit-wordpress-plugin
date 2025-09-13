@@ -23,17 +23,29 @@ class Emailit_Mailer {
     private $logger;
 
     /**
+     * Queue instance
+     */
+    private $queue;
+
+    /**
      * Fallback enabled
      */
     private $fallback_enabled;
 
     /**
+     * Queue enabled
+     */
+    private $queue_enabled;
+
+    /**
      * Constructor
      */
-    public function __construct($api, $logger) {
+    public function __construct($api, $logger, $queue = null) {
         $this->api = $api;
         $this->logger = $logger;
+        $this->queue = $queue;
         $this->fallback_enabled = (bool) get_option('emailit_fallback_enabled', 1);
+        $this->queue_enabled = (bool) get_option('emailit_enable_queue', 0);
 
         $this->init_hooks();
     }
@@ -128,6 +140,11 @@ class Emailit_Mailer {
      * Send email data via API
      */
     private function send_email_data($email_data) {
+        // Check if queue is enabled and should be used
+        if ($this->should_use_queue($email_data)) {
+            return $this->queue_email($email_data);
+        }
+
         // Trigger before send action
         do_action('emailit_before_send', $email_data);
 
@@ -476,5 +493,159 @@ class Emailit_Mailer {
      */
     public function is_fallback_enabled() {
         return $this->fallback_enabled;
+    }
+
+    /**
+     * Check if email should use queue
+     */
+    private function should_use_queue($email_data) {
+        // Don't queue if queue is disabled or not available
+        if (!$this->queue_enabled || !$this->queue) {
+            return false;
+        }
+
+        // Don't queue test emails
+        if (isset($email_data['test_email'])) {
+            return false;
+        }
+
+        // Don't queue password reset and critical emails
+        if (isset($email_data['subject'])) {
+            $critical_subjects = array(
+                'Password Reset',
+                'Login Details',
+                'Account Activation',
+                'Two-Factor Authentication'
+            );
+
+            foreach ($critical_subjects as $critical) {
+                if (strpos($email_data['subject'], $critical) !== false) {
+                    return false;
+                }
+            }
+        }
+
+        // Allow filtering
+        return apply_filters('emailit_should_queue', true, $email_data);
+    }
+
+    /**
+     * Add email to queue
+     */
+    private function queue_email($email_data) {
+        if (!$this->queue) {
+            return false;
+        }
+
+        // Determine priority based on email content
+        $priority = $this->determine_email_priority($email_data);
+
+        // Add to queue
+        $queue_id = $this->queue->add_email($email_data, $priority);
+
+        if (is_wp_error($queue_id)) {
+            // If queueing fails, try to send immediately
+            $this->logger->log(
+                'Failed to queue email, sending immediately: ' . $queue_id->get_error_message(),
+                Emailit_Logger::LEVEL_WARNING
+            );
+
+            return $this->send_email_immediately($email_data);
+        }
+
+        // Log the email as queued
+        $log_id = $this->logger->log_email($email_data, null, 'queued');
+
+        $this->logger->log(
+            'Email queued for processing',
+            Emailit_Logger::LEVEL_INFO,
+            array(
+                'queue_id' => $queue_id,
+                'log_id' => $log_id,
+                'priority' => $priority
+            )
+        );
+
+        return true;
+    }
+
+    /**
+     * Determine email priority
+     */
+    private function determine_email_priority($email_data) {
+        // Default priority
+        $priority = 10;
+
+        // High priority for transactional emails
+        if (isset($email_data['subject'])) {
+            $high_priority_keywords = array(
+                'order',
+                'purchase',
+                'payment',
+                'receipt',
+                'invoice',
+                'confirmation',
+                'registration',
+                'welcome'
+            );
+
+            $subject_lower = strtolower($email_data['subject']);
+            foreach ($high_priority_keywords as $keyword) {
+                if (strpos($subject_lower, $keyword) !== false) {
+                    $priority = 5;
+                    break;
+                }
+            }
+        }
+
+        // Low priority for newsletters and bulk emails
+        if (isset($email_data['headers']['List-Unsubscribe']) ||
+            isset($email_data['headers']['Precedence'])) {
+            $priority = 20;
+        }
+
+        return apply_filters('emailit_email_priority', $priority, $email_data);
+    }
+
+    /**
+     * Send email immediately (bypass queue)
+     */
+    private function send_email_immediately($email_data) {
+        // Temporarily disable queue
+        $original_queue_enabled = $this->queue_enabled;
+        $this->queue_enabled = false;
+
+        $result = $this->send_email_data($email_data);
+
+        // Restore queue setting
+        $this->queue_enabled = $original_queue_enabled;
+
+        return $result;
+    }
+
+    /**
+     * Get queue instance
+     */
+    public function get_queue() {
+        return $this->queue;
+    }
+
+    /**
+     * Check if queue is enabled
+     */
+    public function is_queue_enabled() {
+        return $this->queue_enabled;
+    }
+
+    /**
+     * Enable/disable queue
+     */
+    public function set_queue_enabled($enabled) {
+        $this->queue_enabled = (bool) $enabled;
+        update_option('emailit_enable_queue', $this->queue_enabled);
+
+        if ($this->queue) {
+            $this->queue->set_enabled($this->queue_enabled);
+        }
     }
 }

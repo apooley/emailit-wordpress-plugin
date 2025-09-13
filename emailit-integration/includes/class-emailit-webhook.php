@@ -214,6 +214,22 @@ class Emailit_Webhook {
         $event_type = $webhook_data['event_type'];
         $email_id = isset($webhook_data['email_id']) ? $webhook_data['email_id'] : null;
 
+        // Check if this email belongs to our site
+        if (!$this->is_email_from_this_site($webhook_data)) {
+            // Log the ignored webhook for debugging
+            $this->logger->log('Webhook ignored - email not from this site', Emailit_Logger::LEVEL_DEBUG, array(
+                'event_type' => $event_type,
+                'email_id' => $email_id,
+                'from_email' => isset($webhook_data['from_email']) ? $webhook_data['from_email'] : null,
+                'site_domain' => $this->get_site_domain()
+            ));
+
+            return array(
+                'ignored' => true,
+                'reason' => 'Email not from this site'
+            );
+        }
+
         // Log webhook event
         $webhook_log_id = $this->logger->log_webhook($webhook_data, $email_id);
 
@@ -522,5 +538,145 @@ class Emailit_Webhook {
         ", $date_from), ARRAY_A);
 
         return $stats;
+    }
+
+    /**
+     * Check if the webhook email belongs to this site
+     */
+    private function is_email_from_this_site($webhook_data) {
+        // Get the site domain for comparison
+        $site_domain = $this->get_site_domain();
+
+        // Check multiple ways the email could be identified as from this site
+        $identifiers = array();
+
+        // 1. Check from_email domain
+        if (isset($webhook_data['from_email'])) {
+            $from_domain = $this->extract_domain_from_email($webhook_data['from_email']);
+            $identifiers[] = $from_domain;
+        }
+
+        // 2. Check if we have the email_id in our logs (most reliable)
+        if (isset($webhook_data['email_id'])) {
+            if ($this->email_exists_in_logs($webhook_data['email_id'])) {
+                return true;
+            }
+        }
+
+        // 3. Check against configured from_email addresses
+        $configured_emails = $this->get_configured_from_emails();
+        if (isset($webhook_data['from_email'])) {
+            if (in_array(strtolower($webhook_data['from_email']), array_map('strtolower', $configured_emails))) {
+                return true;
+            }
+        }
+
+        // 4. Check domain match
+        foreach ($identifiers as $identifier) {
+            if (!empty($identifier) && $this->domains_match($identifier, $site_domain)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get the current site domain
+     */
+    private function get_site_domain() {
+        $site_url = get_site_url();
+        $parsed = parse_url($site_url);
+        return isset($parsed['host']) ? strtolower($parsed['host']) : '';
+    }
+
+    /**
+     * Extract domain from email address
+     */
+    private function extract_domain_from_email($email) {
+        if (strpos($email, '@') === false) {
+            return '';
+        }
+
+        $parts = explode('@', $email);
+        return strtolower(trim(end($parts)));
+    }
+
+    /**
+     * Check if domains match (including subdomain handling)
+     */
+    private function domains_match($domain1, $domain2) {
+        $domain1 = strtolower(trim($domain1));
+        $domain2 = strtolower(trim($domain2));
+
+        // Exact match
+        if ($domain1 === $domain2) {
+            return true;
+        }
+
+        // Check if one is a subdomain of the other
+        if (strpos($domain1, $domain2) !== false || strpos($domain2, $domain1) !== false) {
+            // Remove www. prefix for comparison
+            $clean_domain1 = preg_replace('/^www\./', '', $domain1);
+            $clean_domain2 = preg_replace('/^www\./', '', $domain2);
+
+            return $clean_domain1 === $clean_domain2;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if email ID exists in our logs
+     */
+    private function email_exists_in_logs($email_id) {
+        global $wpdb;
+
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$logs_table} WHERE email_id = %s LIMIT 1",
+            $email_id
+        ));
+
+        return !empty($exists);
+    }
+
+    /**
+     * Get configured from email addresses for this site
+     */
+    private function get_configured_from_emails() {
+        $emails = array();
+
+        // Default WordPress admin email
+        $admin_email = get_bloginfo('admin_email');
+        if (!empty($admin_email)) {
+            $emails[] = $admin_email;
+        }
+
+        // Configured Emailit from email
+        $emailit_from = get_option('emailit_from_email', '');
+        if (!empty($emailit_from)) {
+            $emails[] = $emailit_from;
+        }
+
+        // WordPress default from email (wordpress@domain.com)
+        $site_domain = $this->get_site_domain();
+        if (!empty($site_domain)) {
+            $emails[] = 'wordpress@' . $site_domain;
+            $emails[] = 'admin@' . $site_domain;
+            $emails[] = 'noreply@' . $site_domain;
+            $emails[] = 'no-reply@' . $site_domain;
+        }
+
+        // Allow developers to add custom email addresses that should be recognized as from this site
+        // Usage: add_filter('emailit_webhook_recognized_from_emails', function($emails) {
+        //     $emails[] = 'custom@mydomain.com';
+        //     $emails[] = 'notifications@mydomain.com';
+        //     return $emails;
+        // });
+        $emails = apply_filters('emailit_webhook_recognized_from_emails', $emails);
+
+        return array_unique(array_filter($emails));
     }
 }

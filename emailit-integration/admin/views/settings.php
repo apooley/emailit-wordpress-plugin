@@ -115,6 +115,78 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                         </tbody>
                     </table>
 
+                    <!-- Webhook Filtering Information -->
+                    <div class="emailit-webhook-filtering">
+                        <h3><?php _e('Site-Specific Webhook Filtering', 'emailit-integration'); ?></h3>
+                        <div class="notice notice-info inline">
+                            <p>
+                                <span class="dashicons dashicons-filter" style="color: #0073aa;"></span>
+                                <?php _e('This plugin automatically filters webhook events to only process emails sent from this site.', 'emailit-integration'); ?>
+                            </p>
+                        </div>
+
+                        <?php
+                        // Get webhook component to show filtering info
+                        $webhook = emailit_get_component('webhook');
+                        if ($webhook) {
+                            // Get site domain and recognized emails
+                            $site_url = get_site_url();
+                            $parsed = parse_url($site_url);
+                            $site_domain = isset($parsed['host']) ? $parsed['host'] : '';
+
+                            // Get configured emails
+                            $admin_email = get_bloginfo('admin_email');
+                            $emailit_from = get_option('emailit_from_email', '');
+                        ?>
+
+                        <table class="widefat striped">
+                            <thead>
+                                <tr>
+                                    <th><?php _e('Filtering Criteria', 'emailit-integration'); ?></th>
+                                    <th><?php _e('Value', 'emailit-integration'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong><?php _e('Site Domain', 'emailit-integration'); ?></strong></td>
+                                    <td><code><?php echo esc_html($site_domain); ?></code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong><?php _e('Admin Email', 'emailit-integration'); ?></strong></td>
+                                    <td><code><?php echo esc_html($admin_email); ?></code></td>
+                                </tr>
+                                <?php if (!empty($emailit_from) && $emailit_from !== $admin_email) : ?>
+                                <tr>
+                                    <td><strong><?php _e('Configured From Email', 'emailit-integration'); ?></strong></td>
+                                    <td><code><?php echo esc_html($emailit_from); ?></code></td>
+                                </tr>
+                                <?php endif; ?>
+                                <tr>
+                                    <td><strong><?php _e('Common Site Emails', 'emailit-integration'); ?></strong></td>
+                                    <td>
+                                        <?php
+                                        $common_emails = array(
+                                            'wordpress@' . $site_domain,
+                                            'admin@' . $site_domain,
+                                            'noreply@' . $site_domain,
+                                            'no-reply@' . $site_domain
+                                        );
+                                        foreach ($common_emails as $email) {
+                                            echo '<code>' . esc_html($email) . '</code><br>';
+                                        }
+                                        ?>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <p class="description">
+                            <?php _e('Only webhook events for emails matching these criteria will be processed and logged. Emails sent from other sites in your Emailit workspace will be ignored.', 'emailit-integration'); ?>
+                        </p>
+
+                        <?php } ?>
+                    </div>
+
                     <div class="emailit-webhook-test">
                         <h3><?php _e('Test Webhook', 'emailit-integration'); ?></h3>
                         <p><?php _e('Test your webhook endpoint to ensure it\'s working correctly.', 'emailit-integration'); ?></p>
@@ -169,6 +241,33 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                     </div>
                 </div>
 
+                <!-- Plugin Conflict Check -->
+                <div class="emailit-conflict-check">
+                    <h3><?php _e('Plugin Compatibility Check', 'emailit-integration'); ?></h3>
+                    <?php
+                    $admin = emailit_get_component('admin');
+                    $conflicts = $admin ? $admin->get_plugin_conflicts() : array();
+
+                    if (empty($conflicts)) {
+                        echo '<div class="notice notice-success inline">';
+                        echo '<p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ';
+                        echo __('No email plugin conflicts detected.', 'emailit-integration') . '</p>';
+                        echo '</div>';
+                    } else {
+                        echo '<div class="notice notice-warning inline">';
+                        echo '<p><span class="dashicons dashicons-warning" style="color: #f56e28;"></span> ';
+                        echo sprintf(_n('%d potential conflict detected:', '%d potential conflicts detected:', count($conflicts), 'emailit-integration'), count($conflicts)) . '</p>';
+                        echo '<ul style="margin-left: 20px;">';
+                        foreach ($conflicts as $conflict) {
+                            echo '<li><strong>' . esc_html($conflict['name']) . '</strong> - ' . esc_html($conflict['reason']) . '</li>';
+                        }
+                        echo '</ul>';
+                        echo '<p><em>' . __('These plugins may interfere with Emailit\'s email delivery. Consider deactivating them or testing thoroughly.', 'emailit-integration') . '</em></p>';
+                        echo '</div>';
+                    }
+                    ?>
+                </div>
+
                 <!-- System Information -->
                 <div class="emailit-system-info">
                     <h3><?php _e('System Information', 'emailit-integration'); ?></h3>
@@ -201,6 +300,40 @@ if (isset($_POST['submit']) && check_admin_referer('emailit_settings_nonce')) {
                             <tr>
                                 <td><strong><?php _e('Fallback Enabled', 'emailit-integration'); ?></strong></td>
                                 <td><?php echo get_option('emailit_fallback_enabled') ? __('Yes', 'emailit-integration') : __('No', 'emailit-integration'); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong><?php _e('wp_mail() Status', 'emailit-integration'); ?></strong></td>
+                                <td>
+                                    <?php
+                                    if (function_exists('wp_mail')) {
+                                        $reflection = new ReflectionFunction('wp_mail');
+                                        $filename = $reflection->getFileName();
+                                        if ($filename && strpos($filename, 'wp-includes/pluggable.php') !== false) {
+                                            echo '<span style="color: #46b450;">✓ ' . __('WordPress Default', 'emailit-integration') . '</span>';
+                                        } else {
+                                            echo '<span style="color: #f56e28;">⚠ ' . sprintf(__('Overridden in %s', 'emailit-integration'), basename($filename)) . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #d63638;">✗ ' . __('Function not available', 'emailit-integration') . '</span>';
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong><?php _e('Email Hooks Active', 'emailit-integration'); ?></strong></td>
+                                <td>
+                                    <?php
+                                    global $wp_filter;
+                                    $pre_wp_mail_count = isset($wp_filter['pre_wp_mail']) ? count($wp_filter['pre_wp_mail']->callbacks) : 0;
+                                    $phpmailer_count = isset($wp_filter['phpmailer_init']) ? count($wp_filter['phpmailer_init']->callbacks) : 0;
+
+                                    printf(
+                                        __('pre_wp_mail: %d, phpmailer_init: %d', 'emailit-integration'),
+                                        $pre_wp_mail_count,
+                                        $phpmailer_count
+                                    );
+                                    ?>
+                                </td>
                             </tr>
                         </tbody>
                     </table>

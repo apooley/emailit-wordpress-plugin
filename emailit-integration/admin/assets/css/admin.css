@@ -340,6 +340,44 @@
     }
 }
 
+/* Plugin Conflict Check */
+.emailit-conflict-check {
+    margin-top: 40px;
+}
+
+.emailit-conflict-check .notice {
+    margin: 10px 0;
+    padding: 12px;
+}
+
+.emailit-conflict-check .notice.inline {
+    display: block;
+    margin: 15px 0;
+}
+
+.emailit-conflict-check .dashicons {
+    vertical-align: middle;
+    margin-right: 5px;
+}
+
+.emailit-conflict-check ul {
+    margin: 10px 0;
+}
+
+.emailit-conflict-check li {
+    margin-bottom: 5px;
+}
+
+/* System Information improvements */
+.emailit-system-info table td:first-child {
+    width: 200px;
+    font-weight: 500;
+}
+
+.emailit-system-info table td:last-child {
+    font-family: monospace;
+}
+
 /* Accessibility */
 .screen-reader-text {
     clip: rect(1px, 1px, 1px, 1px);
