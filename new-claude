@@ -311,3 +311,9 @@ All planned features have been successfully implemented:
 - Comprehensive error handling and logging
 - Complete documentation (README.md)
 - Professional user interface design
+
+** BUG ALERT:
+Activating the plugin on a site using the Breakdance page builder plugin causes the following fatal error:
+PHP Deprecated:  Breakdance\AJAX\BreakdanceAjaxHandlerException::__construct(): Implicitly marking parameter $previous as nullable is deprecated, the explicit nullable type must be used instead in /home/allenpooley/public_html/wp-content/plugins/breakdance/plugin/ajax/api.php on line 250
+
+Review the Breakdance plugin in the folder: /breakdance/ to find conflict and resolve.
