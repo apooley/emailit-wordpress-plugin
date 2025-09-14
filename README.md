@@ -5,7 +5,7 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.2.0-green.svg)
+![Version](https://img.shields.io/badge/Version-2.3.0-green.svg)
 
 ## 🚀 Features
 
@@ -47,7 +47,7 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 ## 📋 Requirements
 
 - **WordPress:** 5.7 or higher
-- **PHP:** 7.4 or higher
+- **PHP:** 8.0 or higher
 - **Emailit Account:** Active Emailit account with API key
 - **Server:** Support for outgoing HTTP requests (`wp_remote_post`)
 - **SSL Certificate:** Recommended for webhook endpoints
@@ -60,8 +60,8 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 
 1. **Download the Plugin**
    ```bash
-   git clone https://github.com/apooley/emailit-wordpress-plugin.git
-   cd emailit-wordpress-plugin
+   git clone https://github.com/apooley/emailit-integration.git
+   cd emailit-integration
    ```
 
 2. **Upload to WordPress**
@@ -202,20 +202,29 @@ send_welcome_email('newuser@example.com', 'John Doe');
 
 ```php
 function send_newsletter_to_subscribers($subscribers, $subject, $content) {
-    // Enable queue processing for bulk emails
-    add_filter('emailit_use_queue', '__return_true');
+    $sent_count = 0;
+    $failed_count = 0;
 
     foreach ($subscribers as $subscriber) {
-        wp_mail(
+        $result = wp_mail(
             $subscriber['email'],
             $subject,
             $content,
             array('Content-Type: text/html; charset=UTF-8')
         );
+
+        if ($result) {
+            $sent_count++;
+        } else {
+            $failed_count++;
+            emailit_log('Failed to send newsletter to: ' . $subscriber['email'], 'error');
+        }
     }
 
-    // Queue will process emails in background
-    echo 'Newsletter queued for ' . count($subscribers) . ' subscribers';
+    return array(
+        'sent' => $sent_count,
+        'failed' => $failed_count
+    );
 }
 ```
 
@@ -251,16 +260,11 @@ function send_critical_email($to, $subject, $message) {
 ### WooCommerce Integration Example
 
 ```php
-// Customize WooCommerce order emails
+// Log WooCommerce order emails
 add_action('woocommerce_email_header', function($email_heading, $email) {
-    // Add tracking for order emails
-    add_filter('emailit_email_data', function($data) use ($email) {
-        $data['tags'] = array('woocommerce', 'order-email');
-        $data['metadata'] = array(
-            'email_type' => $email->id,
-            'order_id' => $email->object ? $email->object->get_id() : null
-        );
-        return $data;
+    // Log WooCommerce emails
+    add_action('emailit_before_send', function($email_data) use ($email) {
+        emailit_log('Sending WooCommerce ' . $email->id . ' email to: ' . $email_data['to'], 'info');
     });
 }, 10, 2);
 ```
@@ -331,7 +335,48 @@ add_filter('emailit_use_queue', function($use_queue, $email_data) {
     if (strpos($email_data['subject'], 'Password Reset') !== false) {
         return false;
     }
-    return $use_queue;
+
+    // Queue newsletters but send transactional emails immediately
+    if (strpos($email_data['subject'], 'Newsletter') !== false) {
+        return true;
+    }
+
+    return $use_queue; // Use default setting
+}, 10, 2);
+
+// Modify email content before sending
+add_filter('emailit_email_content', function($content, $email_data) {
+    // Add unsubscribe links to newsletters
+    if (strpos($email_data['subject'], 'Newsletter') !== false) {
+        $content .= "\n\nUnsubscribe: https://example.com/unsubscribe";
+    }
+    return $content;
+}, 10, 2);
+
+// Control and modify attachments
+add_filter('emailit_attachments', function($attachments, $email_data) {
+    // Remove large attachments for certain emails
+    return array_filter($attachments, function($attachment) {
+        return file_exists($attachment) && filesize($attachment) < 5000000; // 5MB limit
+    });
+}, 10, 2);
+
+// Customize error messages
+add_filter('emailit_error_message', function($message, $error_code, $context) {
+    if ($error_code === 'rate_limited') {
+        return 'Email sending temporarily limited. Please try again in a few minutes.';
+    }
+    if ($error_code === 'api_error' && isset($context['response_code']) && $context['response_code'] === 429) {
+        return 'Too many emails sent recently. Please wait before sending more.';
+    }
+    return $message;
+}, 10, 3);
+
+// Modify log data before saving
+add_filter('emailit_log_data', function($log_data, $email_data) {
+    // Add custom log fields
+    $log_data['custom_field'] = 'custom_value';
+    return $log_data;
 }, 10, 2);
 
 // Modify sender email
@@ -703,18 +748,26 @@ GNU General Public License for more details.
 ## 🆘 Support
 
 ### Documentation
-- [Plugin Documentation](https://github.com/apooley/emailit-wordpress-plugin/wiki)
+- [Plugin Documentation](https://github.com/apooley/emailit-integration/wiki)
 - [Emailit API Docs](https://api.emailit.com/docs)
 - [WordPress Plugin Guidelines](https://developer.wordpress.org/plugins/)
 
 ### Community
-- [GitHub Issues](https://github.com/apooley/emailit-wordpress-plugin/issues)
+- [GitHub Issues](https://github.com/apooley/emailit-integration/issues)
 
 ---
 
 ## 📋 Changelog
 
-### Version 2.2.0 (Current) 🎨
+### Version 2.3.0 (Current) 🔧
+- ✅ **Enhanced Filters**: Added 3 powerful new developer filters for advanced customization
+- ✅ **Content Filtering**: `emailit_email_content` filter for modifying email content before sending
+- ✅ **Attachment Control**: `emailit_attachments` filter for filtering and modifying attachments
+- ✅ **Error Customization**: `emailit_error_message` filter for customizing user-facing error messages
+- ✅ **Queue Control**: Implemented `emailit_use_queue` filter for dynamic queue control
+- ✅ **Developer Experience**: Complete filter documentation with practical examples
+
+### Version 2.2.0 🎨
 - ✅ **Enhanced UX**: Beautiful HTML test email templates with professional styling
 - ✅ **Improved Admin UI**: Modern design with gradients, shadows, and animations
 - ✅ **Better Visual Feedback**: Loading states, progress indicators, and enhanced button interactions

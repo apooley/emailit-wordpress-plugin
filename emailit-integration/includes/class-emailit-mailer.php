@@ -279,14 +279,30 @@ class Emailit_Mailer {
             }
         }
 
+        // Apply content filter to allow modification of email content
+        $filtered_message = apply_filters('emailit_email_content', $message, array(
+            'to' => $to,
+            'subject' => $subject,
+            'content_type' => $content_type,
+            'headers' => $parsed_headers
+        ));
+
+        // Apply attachment filter to allow modification of attachments
+        $filtered_attachments = apply_filters('emailit_attachments', $attachments, array(
+            'to' => $to,
+            'subject' => $subject,
+            'message' => $filtered_message,
+            'content_type' => $content_type
+        ));
+
         // Build email data with sanitization
         $email_data = array(
             'to' => is_array($to) ? array_map('sanitize_email', array_filter($to, 'is_email')) : (is_email($to) ? sanitize_email($to) : ''),
             'subject' => $this->sanitize_subject($subject),
-            'message' => $message, // Message content handled by content type
+            'message' => $filtered_message, // Use filtered content
             'content_type' => $content_type,
             'headers' => $parsed_headers,
-            'attachments' => $attachments
+            'attachments' => $filtered_attachments // Use filtered attachments
         );
 
         // Add from information with validation
@@ -693,6 +709,17 @@ class Emailit_Mailer {
 
         // Don't queue test emails
         if (isset($email_data['test_email'])) {
+            return false;
+        }
+
+        // Start with the default queue setting
+        $use_queue = $this->queue_enabled;
+
+        // Apply filter to allow developers to override queue decision
+        $use_queue = apply_filters('emailit_use_queue', $use_queue, $email_data);
+
+        // If filter says don't queue, respect that decision
+        if (!$use_queue) {
             return false;
         }
 

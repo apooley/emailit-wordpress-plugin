@@ -65,7 +65,8 @@ class Emailit_API {
     public function send_email($email_data) {
         // Check circuit breaker
         if ($this->error_handler->is_circuit_breaker_open()) {
-            return new WP_Error('circuit_breaker_open', __('Emailit API temporarily disabled due to repeated failures.', 'emailit-integration'));
+            $message = apply_filters('emailit_error_message', __('Emailit API temporarily disabled due to repeated failures.', 'emailit-integration'), 'circuit_breaker_open', array());
+            return new WP_Error('circuit_breaker_open', $message);
         }
 
         // Check if API is temporarily disabled
@@ -76,7 +77,8 @@ class Emailit_API {
 
         // Check rate limiting
         if (get_transient('emailit_rate_limited')) {
-            return new WP_Error('rate_limited', __('Emailit API rate limit in effect. Please try again later.', 'emailit-integration'));
+            $message = apply_filters('emailit_error_message', __('Emailit API rate limit in effect. Please try again later.', 'emailit-integration'), 'rate_limited', array());
+            return new WP_Error('rate_limited', $message);
         }
 
         // Validate API key
@@ -284,9 +286,18 @@ class Emailit_API {
         } else {
             // Error
             $error_message = isset($parsed_response['message']) ? $parsed_response['message'] : 'Unknown API error';
+            $default_message = sprintf(__('Emailit API error (%d): %s', 'emailit-integration'), $response_code, $error_message);
+
+            // Apply filter to allow customization of error messages
+            $filtered_message = apply_filters('emailit_error_message', $default_message, 'api_error', array(
+                'response_code' => $response_code,
+                'original_message' => $error_message,
+                'parsed_response' => $parsed_response
+            ));
+
             return new WP_Error(
                 'api_error',
-                sprintf(__('Emailit API error (%d): %s', 'emailit-integration'), $response_code, $error_message),
+                $filtered_message,
                 array(
                     'response_code' => $response_code,
                     'response_body' => $parsed_response
