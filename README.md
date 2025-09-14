@@ -3,9 +3,9 @@
 A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's powerful email service API, providing advanced email logging, webhook status updates, queue management, and a professional admin interface.
 
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
-![PHP](https://img.shields.io/badge/PHP-7.4+-green.svg)
+![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/Version-2.1.0-green.svg)
 
 ## 🚀 Features
 
