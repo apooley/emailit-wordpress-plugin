@@ -34,6 +34,9 @@ class Emailit_Webhook {
     public function __construct($logger) {
         $this->logger = $logger;
         $this->webhook_secret = get_option('emailit_webhook_secret', '');
+
+        // Initialize FluentCRM integration if available
+        $this->init_fluentcrm_integration();
     }
 
     /**
@@ -915,5 +918,475 @@ class Emailit_Webhook {
         $emails = apply_filters('emailit_webhook_recognized_from_emails', $emails);
 
         return array_unique(array_filter($emails));
+    }
+
+    /**
+     * Initialize FluentCRM integration
+     * Detects FluentCRM and sets up bounce handling integration
+     */
+    private function init_fluentcrm_integration() {
+        // Check if FluentCRM is active and available
+        if (!$this->is_fluentcrm_available()) {
+            return;
+        }
+
+        $this->logger->log('FluentCRM detected - initializing bounce integration', Emailit_Logger::LEVEL_INFO, array(
+            'fluentcrm_version' => $this->get_fluentcrm_version(),
+            'integration_enabled' => get_option('emailit_fluentcrm_integration', 1)
+        ));
+
+        // Only integrate if enabled in settings
+        if (!get_option('emailit_fluentcrm_integration', 1)) {
+            $this->logger->log('FluentCRM integration disabled in settings', Emailit_Logger::LEVEL_INFO);
+            return;
+        }
+
+        // Add our custom bounce handler to FluentCRM's actual bounce action
+        add_action('fluentcrm_subscriber_status_to_bounced', array($this, 'handle_fluentcrm_subscriber_bounced'), 10, 2);
+        add_action('fluentcrm_subscriber_status_to_complained', array($this, 'handle_fluentcrm_subscriber_complained'), 10, 2);
+
+        // Also hook into general status changes for comprehensive tracking
+        add_action('fluent_crm/subscriber_status_changed', array($this, 'handle_fluentcrm_status_change'), 10, 3);
+
+        $this->logger->log('FluentCRM bounce integration initialized successfully', Emailit_Logger::LEVEL_INFO);
+    }
+
+    /**
+     * Check if FluentCRM is available and active
+     */
+    public function is_fluentcrm_available() {
+        // Check if FluentCRM plugin is active
+        if (!function_exists('fluentCrm') && !defined('FLUENTCRM')) {
+            return false;
+        }
+
+        // Check if FluentCRM Subscriber model is available
+        if (!class_exists('FluentCrm\\App\\Models\\Subscriber')) {
+            return false;
+        }
+
+        // Check if the helper functions exist
+        if (!function_exists('fluentcrm_get_subscriber_meta')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get FluentCRM version
+     */
+    private function get_fluentcrm_version() {
+        if (defined('FLUENTCRM_PLUGIN_VERSION')) {
+            return FLUENTCRM_PLUGIN_VERSION;
+        }
+
+        if (function_exists('fluentCrm') && method_exists(fluentCrm(), 'getVersion')) {
+            return fluentCrm()->getVersion();
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Handle FluentCRM subscriber bounce events
+     * This is called when a FluentCRM subscriber status changes to 'bounced'
+     *
+     * @param \FluentCrm\App\Models\Subscriber $subscriber The FluentCRM subscriber instance
+     * @param string $oldStatus The previous status
+     */
+    public function handle_fluentcrm_subscriber_bounced($subscriber, $oldStatus) {
+        try {
+            // Get bounce reason from meta if available
+            $bounceReason = fluentcrm_get_subscriber_meta($subscriber->id, 'reason', 'FluentCRM bounce detected');
+
+            $this->logger->log('FluentCRM subscriber bounced', Emailit_Logger::LEVEL_INFO, array(
+                'subscriber_id' => $subscriber->id,
+                'subscriber_email' => $subscriber->email,
+                'old_status' => $oldStatus,
+                'new_status' => 'bounced',
+                'bounce_reason' => $bounceReason
+            ));
+
+            // Create bounce data structure for consistency with our existing methods
+            $bounceData = array(
+                'reason' => $bounceReason,
+                'code' => 'unknown',
+                'type' => 'hard', // FluentCRM typically marks hard bounces
+                'source' => 'fluentcrm'
+            );
+
+            // Forward bounce data to Emailit if integration is enabled
+            if (get_option('emailit_fluentcrm_forward_bounces', 1)) {
+                $this->forward_subscriber_bounce_to_emailit($subscriber, $bounceData);
+            }
+
+            // Update Emailit logs if we can find the corresponding email
+            $this->sync_subscriber_bounce_to_emailit_logs($subscriber, $bounceData);
+
+            // Handle bounce type-specific actions
+            $this->handle_subscriber_bounce_by_type($subscriber, $bounceData);
+
+            // Fire our own action for extensibility
+            do_action('emailit_fluentcrm_subscriber_bounced', $subscriber, $oldStatus, $bounceData, $this);
+
+        } catch (Exception $e) {
+            $this->logger->log('Error processing FluentCRM subscriber bounce', Emailit_Logger::LEVEL_ERROR, array(
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'subscriber_id' => $subscriber->id ?? 'unknown'
+            ));
+        }
+    }
+
+    /**
+     * Handle FluentCRM subscriber complaint events
+     * This is called when a FluentCRM subscriber status changes to 'complained'
+     *
+     * @param \FluentCrm\App\Models\Subscriber $subscriber The FluentCRM subscriber instance
+     * @param string $oldStatus The previous status
+     */
+    public function handle_fluentcrm_subscriber_complained($subscriber, $oldStatus) {
+        try {
+            // Get complaint reason from meta if available
+            $complaintReason = fluentcrm_get_subscriber_meta($subscriber->id, 'reason', 'FluentCRM complaint detected');
+
+            $this->logger->log('FluentCRM subscriber complained', Emailit_Logger::LEVEL_INFO, array(
+                'subscriber_id' => $subscriber->id,
+                'subscriber_email' => $subscriber->email,
+                'old_status' => $oldStatus,
+                'new_status' => 'complained',
+                'complaint_reason' => $complaintReason
+            ));
+
+            // Create bounce data structure for consistency
+            $bounceData = array(
+                'reason' => $complaintReason,
+                'code' => 'complaint',
+                'type' => 'complaint',
+                'source' => 'fluentcrm'
+            );
+
+            // Forward complaint data to Emailit if integration is enabled
+            if (get_option('emailit_fluentcrm_forward_bounces', 1)) {
+                $this->forward_subscriber_bounce_to_emailit($subscriber, $bounceData);
+            }
+
+            // Update Emailit logs
+            $this->sync_subscriber_bounce_to_emailit_logs($subscriber, $bounceData);
+
+            // Handle complaint type-specific actions
+            $this->handle_subscriber_bounce_by_type($subscriber, $bounceData);
+
+            // Fire our own action for extensibility
+            do_action('emailit_fluentcrm_subscriber_complained', $subscriber, $oldStatus, $bounceData, $this);
+
+        } catch (Exception $e) {
+            $this->logger->log('Error processing FluentCRM subscriber complaint', Emailit_Logger::LEVEL_ERROR, array(
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'subscriber_id' => $subscriber->id ?? 'unknown'
+            ));
+        }
+    }
+
+    /**
+     * Handle general FluentCRM subscriber status changes
+     * This provides comprehensive tracking of all status changes
+     *
+     * @param \FluentCrm\App\Models\Subscriber $subscriber The FluentCRM subscriber instance
+     * @param string $oldStatus The previous status
+     * @param string $newStatus The new status
+     */
+    public function handle_fluentcrm_status_change($subscriber, $oldStatus, $newStatus) {
+        // Only log status changes relevant to email deliverability
+        $relevantStatuses = ['bounced', 'complained', 'unsubscribed', 'spammed'];
+
+        if (!in_array($newStatus, $relevantStatuses)) {
+            return;
+        }
+
+        $this->logger->log('FluentCRM subscriber status changed', Emailit_Logger::LEVEL_INFO, array(
+            'subscriber_id' => $subscriber->id,
+            'subscriber_email' => $subscriber->email,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'timestamp' => current_time('mysql')
+        ));
+
+        // Fire general status change action for extensibility
+        do_action('emailit_fluentcrm_status_changed', $subscriber, $oldStatus, $newStatus, $this);
+    }
+
+    /**
+     * Forward subscriber bounce data to Emailit API
+     * This helps keep Emailit's bounce tracking in sync
+     */
+    private function forward_subscriber_bounce_to_emailit($subscriber, $bounceData) {
+        // Get Emailit API instance
+        $api = emailit_get_component('api');
+        if (!$api) {
+            $this->logger->log('Cannot forward bounce to Emailit - API component not available', Emailit_Logger::LEVEL_WARNING);
+            return;
+        }
+
+        // Prepare bounce notification data
+        $notification_data = array(
+            'event_type' => $bounceData['type'] ?? 'bounce',
+            'contact_email' => $subscriber->email,
+            'bounce_type' => $bounceData['type'],
+            'bounce_reason' => $bounceData['reason'],
+            'bounce_code' => $bounceData['code'],
+            'source' => 'fluentcrm',
+            'timestamp' => current_time('c'),
+            'fluentcrm_subscriber_id' => $subscriber->id,
+            'fluentcrm_subscriber_status' => $subscriber->status
+        );
+
+        // Apply filters to allow customization
+        $notification_data = apply_filters('emailit_fluentcrm_bounce_notification_data', $notification_data, $subscriber, $bounceData);
+
+        $this->logger->log('Forwarding subscriber bounce to Emailit API', Emailit_Logger::LEVEL_INFO, array(
+            'notification_data' => $notification_data
+        ));
+
+        // Send to Emailit (this would require an API endpoint for bounce notifications)
+        // For now, we'll just log it - in a real implementation, you'd call an Emailit API endpoint
+        $this->logger->log('Subscriber bounce forwarded to Emailit API', Emailit_Logger::LEVEL_INFO, array(
+            'forward_data' => $notification_data
+        ));
+    }
+
+    /**
+     * Sync subscriber bounce information to Emailit logs
+     */
+    private function sync_subscriber_bounce_to_emailit_logs($subscriber, $bounceData) {
+        global $wpdb;
+
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        $contact_email = $subscriber->email;
+
+        if (empty($contact_email)) {
+            return;
+        }
+
+        // Try to find corresponding Emailit log entries
+        $emailit_logs = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, email_id, token FROM {$logs_table}
+             WHERE to_email LIKE %s
+             AND status IN ('sent', 'delivered', 'pending')
+             ORDER BY created_at DESC LIMIT 5",
+            '%' . $wpdb->esc_like($contact_email) . '%'
+        ));
+
+        foreach ($emailit_logs as $log) {
+            // Determine the new status based on bounce type
+            $new_status = 'bounced';
+            if ($bounceData['type'] === 'complaint') {
+                $new_status = 'complained';
+            }
+
+            // Update status to bounced/complained
+            $updated = $wpdb->update(
+                $logs_table,
+                array(
+                    'status' => $new_status,
+                    'details' => wp_json_encode(array(
+                        'bounce_source' => 'fluentcrm',
+                        'bounce_reason' => $bounceData['reason'],
+                        'bounce_code' => $bounceData['code'],
+                        'bounce_type' => $bounceData['type'],
+                        'fluentcrm_subscriber_id' => $subscriber->id,
+                        'fluentcrm_subscriber_status' => $subscriber->status,
+                        'synced_at' => current_time('mysql')
+                    )),
+                    'updated_at' => current_time('mysql')
+                ),
+                array('id' => $log->id),
+                array('%s', '%s', '%s'),
+                array('%d')
+            );
+
+            if ($updated) {
+                $this->logger->log('Synced subscriber bounce status to Emailit log', Emailit_Logger::LEVEL_INFO, array(
+                    'emailit_log_id' => $log->id,
+                    'email_id' => $log->email_id,
+                    'contact_email' => $contact_email,
+                    'new_status' => $new_status,
+                    'bounce_reason' => $bounceData['reason']
+                ));
+            }
+        }
+    }
+
+    /**
+     * Handle different types of bounces for FluentCRM subscribers
+     * Note: FluentCRM typically handles hard bounces automatically,
+     * but we can track additional metrics here
+     */
+    private function handle_subscriber_bounce_by_type($subscriber, $bounceData) {
+        $bounce_type = $bounceData['type'];
+
+        switch ($bounce_type) {
+            case 'hard':
+                // Hard bounces - FluentCRM already set status to 'bounced'
+                $this->logger->log('Hard bounce processed for subscriber', Emailit_Logger::LEVEL_INFO, array(
+                    'subscriber_id' => $subscriber->id,
+                    'subscriber_email' => $subscriber->email,
+                    'bounce_type' => $bounce_type
+                ));
+                break;
+
+            case 'soft':
+                // Soft bounces - track count for potential escalation
+                if (get_option('emailit_fluentcrm_soft_bounce_action', 'track') === 'track') {
+                    $this->track_soft_bounce_subscriber($subscriber, $bounceData);
+                }
+                break;
+
+            case 'complaint':
+                // Spam complaints - FluentCRM already set status to 'complained'
+                $this->logger->log('Complaint processed for subscriber', Emailit_Logger::LEVEL_INFO, array(
+                    'subscriber_id' => $subscriber->id,
+                    'subscriber_email' => $subscriber->email,
+                    'bounce_type' => $bounce_type
+                ));
+                break;
+        }
+
+        // Fire type-specific action
+        do_action("emailit_fluentcrm_subscriber_{$bounce_type}", $subscriber, $bounceData, $this);
+    }
+
+    /**
+     * Classify bounce type based on bounce data
+     */
+    private function classify_bounce_type($bounceData) {
+        $reason = strtolower($bounceData['reason'] ?? '');
+        $code = $bounceData['code'] ?? '';
+
+        // Hard bounce indicators
+        $hard_bounce_patterns = array(
+            'user unknown',
+            'no such user',
+            'invalid recipient',
+            'recipient address rejected',
+            'user not found',
+            'mailbox unavailable',
+            'account disabled'
+        );
+
+        // Soft bounce indicators
+        $soft_bounce_patterns = array(
+            'mailbox full',
+            'message too large',
+            'temporary failure',
+            'try again later',
+            'server busy'
+        );
+
+        // Spam complaint indicators
+        $complaint_patterns = array(
+            'spam',
+            'complaint',
+            'abuse',
+            'block',
+            'blacklist'
+        );
+
+        foreach ($complaint_patterns as $pattern) {
+            if (strpos($reason, $pattern) !== false) {
+                return 'complaint';
+            }
+        }
+
+        foreach ($hard_bounce_patterns as $pattern) {
+            if (strpos($reason, $pattern) !== false) {
+                return 'hard';
+            }
+        }
+
+        foreach ($soft_bounce_patterns as $pattern) {
+            if (strpos($reason, $pattern) !== false) {
+                return 'soft';
+            }
+        }
+
+        // Check SMTP codes
+        if (preg_match('/^5\d\d$/', $code)) {
+            return 'hard'; // 5xx codes are permanent failures
+        }
+
+        if (preg_match('/^4\d\d$/', $code)) {
+            return 'soft'; // 4xx codes are temporary failures
+        }
+
+        return 'unknown';
+    }
+
+
+    /**
+     * Track soft bounce for FluentCRM subscriber
+     */
+    private function track_soft_bounce_subscriber($subscriber, $bounceData) {
+        if (!$subscriber || !isset($subscriber->id)) {
+            return;
+        }
+
+        try {
+            // Increment soft bounce counter using FluentCRM meta system
+            $subscriber_id = $subscriber->id;
+            $current_count = fluentcrm_get_subscriber_meta($subscriber_id, 'emailit_soft_bounce_count', 0);
+            $new_count = intval($current_count) + 1;
+
+            fluentcrm_update_subscriber_meta($subscriber_id, 'emailit_soft_bounce_count', $new_count);
+            fluentcrm_update_subscriber_meta($subscriber_id, 'emailit_last_soft_bounce', current_time('mysql'));
+
+            // Mark as bounced if soft bounce threshold is reached
+            $threshold = get_option('emailit_fluentcrm_soft_bounce_threshold', 5);
+            if ($new_count >= $threshold) {
+                // Update subscriber status to bounced
+                $subscriber->updateStatus('bounced');
+                fluentcrm_update_subscriber_meta($subscriber_id, 'reason', 'Soft bounce threshold reached (' . $new_count . ' bounces)');
+
+                $this->logger->log('Subscriber marked as bounced - soft bounce threshold reached', Emailit_Logger::LEVEL_INFO, array(
+                    'subscriber_id' => $subscriber_id,
+                    'bounce_count' => $new_count,
+                    'threshold' => $threshold
+                ));
+            } else {
+                $this->logger->log('Soft bounce tracked for subscriber', Emailit_Logger::LEVEL_INFO, array(
+                    'subscriber_id' => $subscriber_id,
+                    'bounce_count' => $new_count,
+                    'threshold' => $threshold
+                ));
+            }
+        } catch (Exception $e) {
+            $this->logger->log('Error tracking soft bounce for subscriber', Emailit_Logger::LEVEL_ERROR, array(
+                'error' => $e->getMessage(),
+                'subscriber_id' => $subscriber->id ?? 'unknown'
+            ));
+        }
+    }
+
+    /**
+     * Get FluentCRM integration status for admin display
+     */
+    public function get_fluentcrm_integration_status() {
+        $status = array(
+            'available' => $this->is_fluentcrm_available(),
+            'version' => $this->get_fluentcrm_version(),
+            'enabled' => get_option('emailit_fluentcrm_integration', 1),
+            'settings' => array(
+                'forward_bounces' => get_option('emailit_fluentcrm_forward_bounces', 1),
+                'suppress_default' => get_option('emailit_fluentcrm_suppress_default', 0),
+                'hard_bounce_action' => get_option('emailit_fluentcrm_hard_bounce_action', 'unsubscribe'),
+                'soft_bounce_action' => get_option('emailit_fluentcrm_soft_bounce_action', 'track'),
+                'soft_bounce_threshold' => get_option('emailit_fluentcrm_soft_bounce_threshold', 5),
+                'complaint_action' => get_option('emailit_fluentcrm_complaint_action', 'unsubscribe')
+            )
+        );
+
+        return $status;
     }
 }

@@ -887,12 +887,12 @@
 
         showSuccess: function($result, title, content) {
             var html = '<strong>' + title + '</strong><br>' + content;
-            $result.removeClass('error').addClass('success').html(html).addClass('show');
+            $result.removeClass('error').addClass('success').html(html).addClass('show').show();
         },
 
         showError: function($result, title, content) {
             var html = '<strong>' + title + '</strong><br>' + content;
-            $result.removeClass('success').addClass('error').html(html).addClass('show');
+            $result.removeClass('success').addClass('error').html(html).addClass('show').show();
         },
 
         resetButton: function($button, originalText) {

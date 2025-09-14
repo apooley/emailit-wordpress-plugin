@@ -436,6 +436,14 @@ class Emailit_Integration {
             'emailit_queue_batch_size' => 10,
             'emailit_queue_max_retries' => 3,
             'emailit_webhook_secret' => '',
+            // FluentCRM Integration Options
+            'emailit_fluentcrm_integration' => 1,
+            'emailit_fluentcrm_forward_bounces' => 1,
+            'emailit_fluentcrm_suppress_default' => 0,
+            'emailit_fluentcrm_hard_bounce_action' => 'unsubscribe',
+            'emailit_fluentcrm_soft_bounce_action' => 'track',
+            'emailit_fluentcrm_soft_bounce_threshold' => 5,
+            'emailit_fluentcrm_complaint_action' => 'unsubscribe',
         );
 
         foreach ($defaults as $option => $value) {

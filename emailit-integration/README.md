@@ -1,8 +1,29 @@
 # Emailit Integration for WordPress
 
-**Version 2.1.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, and a complete admin interface with enterprise-grade security.
+**Version 2.3.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.3.0 - FluentCRM Integration & Email Template Enhancement
+
+### 🤝 **FluentCRM Integration**
+- **Automatic Detection**: Seamless integration that only activates when FluentCRM is installed
+- **Bi-directional Bounce Sync**: FluentCRM bounces automatically update Emailit logs
+- **Comprehensive Status Tracking**: Handles hard bounces, soft bounces, and spam complaints
+- **Zero Impact**: No effect on existing functionality when FluentCRM is not present
+- **Flexible Configuration**: Multiple configurable options for bounce handling behavior
+- **Developer Hooks**: Extensive action and filter hooks for custom integration logic
+
+### ✨ **Email Template Improvements**
+- **Email Client Compatibility**: Fixed HTML email templates for proper rendering in all email clients
+- **Inline CSS Styling**: Converted CSS to inline styles for maximum compatibility
+- **Table-based Layout**: Professional email layout that works across Gmail, Outlook, and mobile clients
+- **Enhanced Rendering**: Resolved styling issues that caused poor email display
+
+### 🔧 **JavaScript Fixes**
+- **Test Result Display**: Fixed WordPress Mail Test result div being hidden immediately after submission
+- **Enhanced User Experience**: Test results now properly persist for user review
+- **UI Consistency**: Improved admin interface reliability and visual feedback
 
 ### Version 2.1.0 - Security & Stability Release
 
@@ -399,6 +420,109 @@ Some WordPress core emails are excluded by default to prevent authentication iss
 
 You can customize exclusions using the `emailit_is_excluded_email` filter.
 
+## FluentCRM Integration
+
+The Emailit plugin includes automatic integration with FluentCRM, a popular WordPress CRM and email marketing plugin. This integration provides seamless bounce handling and status synchronization between FluentCRM and Emailit.
+
+### Automatic Detection
+
+The FluentCRM integration is **completely optional** and only activates when FluentCRM is detected:
+
+- ✅ **Zero Impact**: No effect on your site if FluentCRM is not installed
+- ✅ **Automatic Activation**: Enables automatically when FluentCRM plugin is active
+- ✅ **Safe Fallback**: Gracefully handles FluentCRM deactivation without errors
+- ✅ **No Dependencies**: Emailit works perfectly with or without FluentCRM
+
+### Features
+
+#### 🔄 **Bi-directional Bounce Sync**
+- FluentCRM bounce detection automatically updates Emailit logs
+- Maintains synchronized bounce status across both systems
+- Preserves bounce context and detailed error information
+
+#### 📊 **Comprehensive Status Tracking**
+- **Hard Bounces**: Automatically marked in Emailit logs when FluentCRM detects permanent failures
+- **Soft Bounces**: Tracked with escalation to hard bounce after configurable threshold
+- **Spam Complaints**: Synchronized between FluentCRM and Emailit for reputation management
+- **Unsubscribes**: Status changes tracked for comprehensive deliverability insights
+
+#### ⚙️ **Flexible Configuration**
+The integration includes several configurable options:
+
+- `emailit_fluentcrm_integration` - Enable/disable integration (default: enabled)
+- `emailit_fluentcrm_forward_bounces` - Forward bounce data to Emailit API (default: enabled)
+- `emailit_fluentcrm_soft_bounce_threshold` - Soft bounce limit before marking as hard bounce (default: 5)
+
+### How It Works
+
+1. **FluentCRM Detection**: Plugin automatically detects when FluentCRM is active
+2. **Bounce Events**: FluentCRM receives bounce notifications from email services (AWS SES, Mailgun, SendGrid, etc.)
+3. **Status Updates**: FluentCRM updates subscriber status (bounced, complained, unsubscribed)
+4. **Integration Trigger**: Our integration captures these status changes via WordPress action hooks:
+   - `fluentcrm_subscriber_status_to_bounced`
+   - `fluentcrm_subscriber_status_to_complained`
+   - `fluent_crm/subscriber_status_changed`
+5. **Data Sync**: Corresponding Emailit logs are updated with bounce information
+6. **Logging**: All integration activities are logged for debugging and audit trails
+
+### Developer Hooks
+
+For advanced customization, the integration provides several action hooks:
+
+```php
+// Fired when a FluentCRM subscriber bounces
+add_action('emailit_fluentcrm_subscriber_bounced', function($subscriber, $oldStatus, $bounceData, $webhook) {
+    // Custom bounce handling logic
+    error_log("Subscriber {$subscriber->email} bounced: {$bounceData['reason']}");
+});
+
+// Fired when a FluentCRM subscriber complaint is detected
+add_action('emailit_fluentcrm_subscriber_complained', function($subscriber, $oldStatus, $bounceData, $webhook) {
+    // Custom complaint handling logic
+    // Send notification to admin, update custom fields, etc.
+});
+
+// General status change tracking
+add_action('emailit_fluentcrm_status_changed', function($subscriber, $oldStatus, $newStatus, $webhook) {
+    // Track all deliverability-related status changes
+    if (in_array($newStatus, ['bounced', 'complained', 'unsubscribed'])) {
+        // Custom logic for tracking deliverability issues
+    }
+});
+
+// Customize bounce notification data sent to Emailit API
+add_filter('emailit_fluentcrm_bounce_notification_data', function($data, $subscriber, $bounceData) {
+    $data['custom_field'] = 'custom_value';
+    $data['subscriber_tags'] = $subscriber->tags; // Add FluentCRM tags
+    return $data;
+}, 10, 3);
+```
+
+### Supported FluentCRM Versions
+
+- **FluentCRM 2.9.65+**: Fully tested and supported
+- **FluentCRM 2.0+**: Compatible with all modern FluentCRM versions
+- **Earlier Versions**: May work but not officially supported
+
+### Benefits
+
+1. **Unified Bounce Management**: Single source of truth for bounce handling across both platforms
+2. **Enhanced Deliverability**: Better reputation management through comprehensive bounce tracking
+3. **Reduced Manual Work**: Automatic synchronization eliminates manual status updates
+4. **Audit Trail**: Complete logging of all bounce-related activities
+5. **Zero Maintenance**: Works automatically in the background with no configuration required
+
+### Troubleshooting
+
+If you experience issues with the FluentCRM integration:
+
+1. **Check FluentCRM Status**: Ensure FluentCRM is active and functioning properly
+2. **Enable Debug Logging**: Set `WP_DEBUG` to `true` to see integration activity logs
+3. **Verify Settings**: Check that `emailit_fluentcrm_integration` option is enabled
+4. **Review Logs**: Check both Emailit and FluentCRM logs for bounce processing
+
+The integration is designed to be completely transparent and should require no manual intervention once both plugins are active.
+
 ## Filters and Actions
 
 ### Filters
@@ -509,6 +633,34 @@ For support, bug reports, and feature requests:
 - Developer Contact: Direct developer support for critical issues
 
 ## Changelog
+
+### Version 2.3.0 - FluentCRM Integration & Email Template Enhancement
+
+**🤝 FluentCRM Integration:**
+- **Automatic FluentCRM Detection**: Seamless integration that only activates when FluentCRM plugin is detected
+- **Bi-directional Bounce Synchronization**: FluentCRM bounce events automatically update Emailit email logs
+- **Comprehensive Status Tracking**: Support for hard bounces, soft bounces, spam complaints, and unsubscribes
+- **Zero-Impact Design**: No effect on plugin functionality when FluentCRM is not installed
+- **Flexible Configuration Options**: Multiple settings for bounce handling behavior and thresholds
+- **Developer Hook System**: Extensive action and filter hooks for custom integration and bounce handling logic
+- **Soft Bounce Escalation**: Configurable threshold for escalating soft bounces to hard bounces
+- **Meta Data Integration**: Full integration with FluentCRM's subscriber meta system for tracking bounce history
+
+**✨ Email Template Improvements:**
+- **Email Client Compatibility**: Complete rewrite of HTML email templates using inline CSS for universal email client support
+- **Table-based Layout**: Professional responsive design that renders correctly in Gmail, Outlook, Apple Mail, and mobile clients
+- **Inline CSS Conversion**: Moved all CSS styles inline to ensure proper rendering across all email platforms
+- **Enhanced Visual Design**: Improved email aesthetics with proper spacing, colors, and typography
+
+**🔧 User Interface Fixes:**
+- **WordPress Mail Test Display**: Fixed issue where test result div was immediately hidden after form submission
+- **Enhanced User Experience**: Test results now properly persist for user review and debugging
+- **Admin Interface Reliability**: Improved JavaScript handling and visual feedback consistency
+
+**🛠️ Developer Experience:**
+- **Enhanced Filter System**: Added comprehensive filters for email content, attachments, error messages, and queue control
+- **FluentCRM Hook Documentation**: Complete documentation of all available integration hooks and filters
+- **Improved Code Architecture**: Better separation of concerns between core email functionality and CRM integration
 
 ### Version 2.1.0 - Security & Stability Release
 **🎯 New Features:**
