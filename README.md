@@ -130,6 +130,35 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 
 ---
 
+## 🛡️ Fallback Behavior & Email Safety
+
+### **No API Key? No Problem!**
+
+**The plugin is designed to be safe and non-disruptive:**
+
+- ✅ **Emails Always Work** - If no API key is configured, emails automatically fall back to WordPress default (`wp_mail()`)
+- ✅ **Zero Downtime** - Installing the plugin without an API key won't break existing email functionality
+- ✅ **Transparent Fallback** - Users experience no interruption while you configure the plugin
+- ✅ **Graceful Degradation** - If Emailit API fails, emails continue via WordPress default system
+
+### **Fallback Scenarios**
+
+The plugin automatically falls back to WordPress default email in these cases:
+- No API key configured
+- Invalid API key
+- Emailit API temporarily unavailable
+- Network connectivity issues
+- Rate limiting exceeded
+
+### **Configuration**
+```php
+// Fallback is enabled by default, but you can control it:
+update_option('emailit_fallback_enabled', true);  // Enable fallback (default)
+update_option('emailit_fallback_enabled', false); // Disable fallback (emails will fail)
+```
+
+---
+
 ## 💻 Usage Examples
 
 ### Basic Email Sending
