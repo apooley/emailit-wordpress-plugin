@@ -709,28 +709,6 @@ GNU General Public License for more details.
 
 ### Community
 - [GitHub Issues](https://github.com/apooley/emailit-wordpress-plugin/issues)
-- [WordPress Support Forum](https://wordpress.org/support/plugin/emailit-integration)
-
-### Professional Support
-For enterprise support, custom development, or priority assistance:
-- Email: support@emailit.com
-- Website: https://emailit.com/wordpress-support
-
----
-
-## 🎯 Roadmap
-
-### Version 1.1 (Planned)
-- [ ] Email template system
-- [ ] Advanced analytics dashboard
-- [ ] Multi-site network support
-- [ ] REST API endpoints
-
-### Version 1.2 (Future)
-- [ ] Email A/B testing
-- [ ] Automated email sequences
-- [ ] Integration with popular form plugins
-- [ ] Advanced spam protection
 
 ---
 
