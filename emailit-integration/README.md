@@ -5,6 +5,11 @@
 ## 🚀 Recent Updates
 
 ### Version 2.1.0 - Security & Stability Release
+
+### 🎯 **New Features**
+- **Optional Webhook Listening**: Choose between real-time webhook updates or simplified "Sent to API" status
+- **Enhanced Email Status Display**: Clear differentiation between webhook-enabled and disabled modes
+- **Dynamic Webhook Registration**: Webhook endpoints only registered when needed, saving resources
 ### 🔒 **Critical Security Fixes**
 - **SQL Injection Prevention**: Fixed uninstall script vulnerability with proper table name escaping
 - **File Upload Security**: Comprehensive protection against malicious file uploads with path traversal prevention, MIME type validation, and dangerous extension blocking
@@ -135,10 +140,13 @@
 ### Webhook Setup
 
 1. Go to the **Webhook** tab in plugin settings
-2. Copy the webhook URL provided
-3. Add this URL to your Emailit dashboard webhook settings
-4. Copy the webhook secret and add it to your Emailit webhook configuration
-5. Test the webhook using the built-in test functionality
+2. **Enable Webhooks** checkbox controls real-time status updates:
+   - **Enabled**: Receive detailed status updates (delivered, bounced, etc.) - emails show as "Sent" initially
+   - **Disabled**: Simple "Sent to API" status only - no webhook endpoint registered
+3. If webhooks enabled, copy the webhook URL provided
+4. Add this URL to your Emailit dashboard webhook settings
+5. Copy the webhook secret and add it to your Emailit webhook configuration
+6. Test the webhook using the built-in test functionality
 
 ### Advanced Settings
 
@@ -186,17 +194,26 @@ $queue->add_to_queue($email_data);
 
 ## Email Status Tracking
 
-The plugin automatically tracks email status through webhooks:
+The plugin tracks email status with two different modes:
 
+### With Webhooks Enabled (Default)
+Real-time status updates through webhooks:
 - **Pending**: Email queued for sending
 - **Processing**: Email being sent via queue
-- **Sent**: Email accepted by Emailit API
+- **Sent**: Email accepted by Emailit API (awaiting delivery updates)
 - **Delivered**: Email successfully delivered to recipient
 - **Bounced**: Email bounced (invalid address, full mailbox, etc.)
 - **Failed**: Email failed to send
 - **Complained**: Recipient marked email as spam
 - **Opened**: Email opened by recipient (if tracking enabled)
 - **Clicked**: Link clicked in email (if tracking enabled)
+
+### With Webhooks Disabled
+Simplified status tracking:
+- **Pending**: Email queued for sending
+- **Processing**: Email being sent via queue
+- **Sent to API**: Email successfully sent to Emailit API (no further updates)
+- **Failed**: Email failed to send
 
 ## Admin Interface
 
@@ -494,6 +511,12 @@ For support, bug reports, and feature requests:
 ## Changelog
 
 ### Version 2.1.0 - Security & Stability Release
+**🎯 New Features:**
+- **Optional Webhook Listening**: New checkbox to enable/disable webhook status updates
+- **Simplified Status Tracking**: "Sent to API" status for webhook-disabled mode
+- **Dynamic Resource Management**: Webhook endpoints only registered when needed
+- **Enhanced Admin Interface**: Webhook secret field automatically disabled when webhooks off
+
 **🔒 Critical Security Fixes:**
 - **Fixed SQL injection vulnerability** in uninstall script using proper table name escaping
 - **Comprehensive file upload security** with path traversal prevention, MIME validation, and extension blocking
