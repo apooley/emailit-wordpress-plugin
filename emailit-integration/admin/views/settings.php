@@ -307,6 +307,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                     <div id="emailit-wordpress-test-result" class="emailit-test-result" style="display: none;"></div>
                 </div>
 
+                <?php if (defined('WP_DEBUG') && WP_DEBUG) : ?>
                 <!-- Diagnostic Test -->
                 <div class="emailit-diagnostic-test">
                     <h3><?php _e('Plugin Diagnostic', 'emailit-integration'); ?></h3>
@@ -323,6 +324,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
 
                     <div id="emailit-diagnostic-result" class="emailit-test-result" style="display: none;"></div>
                 </div>
+                <?php endif; ?>
 
                 <!-- Email Statistics -->
                 <div class="emailit-stats-section">

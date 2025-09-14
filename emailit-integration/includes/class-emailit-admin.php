@@ -437,13 +437,15 @@ class Emailit_Admin {
         $display_value = $has_key ? '••••••••••••••••••••••••••••••••' : '';
         $placeholder = $has_key ? 'Enter new API key to replace existing key' : 'Enter your Emailit API key';
 
+        echo '<div class="emailit-api-key-container">';
         echo '<input type="password" id="emailit_api_key" name="emailit_api_key" value="' . esc_attr($display_value) . '" placeholder="' . esc_attr($placeholder) . '" class="regular-text" data-has-key="' . ($has_key ? '1' : '0') . '" />';
 
         if ($is_valid) {
-            echo ' <span class="emailit-status delivered">✓ Valid</span>';
+            echo '<span class="emailit-status delivered">✓ Valid</span>';
         } elseif ($has_key) {
-            echo ' <span class="emailit-status failed">✗ Invalid</span>';
+            echo '<span class="emailit-status failed">✗ Invalid</span>';
         }
+        echo '</div>';
 
         if ($has_key) {
             echo '<p class="description">' . __('API key is set and encrypted. Enter a new key to replace it, or leave unchanged to keep current key.', 'emailit-integration') . '</p>';
@@ -617,24 +619,10 @@ class Emailit_Admin {
             $timestamp = current_time('mysql');
 
             // Prepare email content
-            $subject = sprintf(__('[%s] WordPress Email Test via Emailit', 'emailit-integration'), $site_name);
+            $subject = sprintf(__('🔧 WordPress Test Email via Emailit - %s', 'emailit-integration'), $site_name);
+            $current_time = current_time('F j, Y g:i A T');
 
-            $message = sprintf(
-                __('This is a test email sent through WordPress wp_mail() function, intercepted by the Emailit plugin.
-
-Site: %s
-URL: %s
-Timestamp: %s
-Plugin Version: %s
-
-If you receive this email, the WordPress integration is working correctly.
-
-This email was sent via the Emailit WordPress plugin test function.', 'emailit-integration'),
-                $site_name,
-                $site_url,
-                $timestamp,
-                EMAILIT_VERSION
-            );
+            $message = $this->get_wordpress_test_email_template($site_name, $site_url, $current_time);
 
             // Set headers to indicate HTML content
             $headers = array(
@@ -1508,5 +1496,114 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
                 ));
             }
         }
+    }
+
+    /**
+     * Get HTML template for WordPress test emails
+     */
+    private function get_wordpress_test_email_template($site_name, $site_url, $current_time) {
+        return '
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html__('WordPress Test Email - Emailit Integration', 'emailit-integration') . '</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8f9fa; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #d63384 0%, #dc3545 100%); padding: 40px 20px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; }
+        .header .subtitle { color: #ffeef1; margin: 10px 0 0; font-size: 16px; }
+        .content { padding: 40px 30px; }
+        .diagnostic-badge { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; }
+        .diagnostic-badge .icon { font-size: 48px; margin-bottom: 10px; color: #fd7e14; }
+        .diagnostic-badge h2 { color: #856404; margin: 0 0 10px; font-size: 24px; }
+        .diagnostic-badge p { color: #856404; margin: 0; font-size: 16px; }
+        .info-card { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid #e9ecef; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-weight: 600; color: #495057; }
+        .info-value { color: #6c757d; font-family: monospace; }
+        .technical-note { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin: 25px 0; border-radius: 0 4px 4px 0; }
+        .technical-note h4 { color: #1976d2; margin: 0 0 10px; font-size: 16px; }
+        .technical-note p { color: #1565c0; margin: 0; font-size: 14px; line-height: 1.4; }
+        .footer { background: #f8f9fa; padding: 30px; text-align: center; color: #6c757d; font-size: 14px; }
+        .footer a { color: #007cba; text-decoration: none; }
+        .cta-button { display: inline-block; background: #d63384; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 20px 0; }
+        @media (max-width: 600px) {
+            .content { padding: 30px 20px; }
+            .info-row { flex-direction: column; align-items: flex-start; text-align: left; }
+            .info-value { margin-top: 5px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 ' . esc_html__('WordPress wp_mail() Test', 'emailit-integration') . '</h1>
+            <p class="subtitle">' . esc_html__('Testing email interception and processing', 'emailit-integration') . '</p>
+        </div>
+
+        <div class="content">
+            <div class="diagnostic-badge">
+                <div class="icon">🔍</div>
+                <h2>' . esc_html__('Diagnostic Test Complete', 'emailit-integration') . '</h2>
+                <p>' . esc_html__('This email was sent through WordPress wp_mail() function', 'emailit-integration') . '</p>
+            </div>
+
+            <p>' . sprintf(esc_html__('This test email was sent from <strong>%s</strong> using the standard WordPress wp_mail() function. If you received this email, it means the Emailit plugin successfully intercepted the wp_mail() call and routed it through the Emailit API.', 'emailit-integration'), esc_html($site_name)) . '</p>
+
+            <div class="technical-note">
+                <h4>📋 ' . esc_html__('Technical Details', 'emailit-integration') . '</h4>
+                <p>' . esc_html__('This test helps verify that the plugin properly hooks into WordPress\'s email system. The wp_mail() function is used by contact forms, user registration, password resets, and other WordPress features.', 'emailit-integration') . '</p>
+            </div>
+
+            <div class="info-card">
+                <h3 style="margin-top: 0; color: #495057;">' . esc_html__('Test Information', 'emailit-integration') . '</h3>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Website:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($site_name) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('URL:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($site_url) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Sent At:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($current_time) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Plugin Version:', 'emailit-integration') . '</span>
+                    <span class="info-value">v' . esc_html(EMAILIT_VERSION) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Method:', 'emailit-integration') . '</span>
+                    <span class="info-value">wp_mail() → Emailit API</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Integration Status:', 'emailit-integration') . '</span>
+                    <span class="info-value">✅ Working</span>
+                </div>
+            </div>
+
+            <p style="margin-top: 30px;">' . esc_html__('🎯 Perfect! Your WordPress site is properly integrated with Emailit. All plugins and features that send emails through wp_mail() will now be delivered via the Emailit service, providing better deliverability and tracking capabilities.', 'emailit-integration') . '</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="' . esc_url(admin_url('tools.php?page=emailit-logs')) . '" class="cta-button">' . esc_html__('View Email Logs', 'emailit-integration') . '</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>' . sprintf(
+                esc_html__('This diagnostic email was sent by the %s plugin. %s', 'emailit-integration'),
+                '<strong>Emailit Integration</strong>',
+                '<a href="https://emailit.com/docs" target="_blank">View Documentation</a>'
+            ) . '</p>
+            <p style="margin-top: 10px; font-size: 12px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
+        </div>
+    </div>
+</body>
+</html>';
     }
 }

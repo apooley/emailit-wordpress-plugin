@@ -599,18 +599,117 @@ class Emailit_API {
             return new WP_Error('no_api_key', $debug_message);
         }
 
+        $site_name = get_bloginfo('name');
+        $site_url = home_url();
+        $current_time = current_time('F j, Y g:i A T');
+
         $test_data = array(
             'to' => $test_email ?: get_bloginfo('admin_email'),
-            'subject' => sprintf(__('Test email from %s', 'emailit-integration'), get_bloginfo('name')),
-            'message' => sprintf(
-                __("This is a test email sent from the Emailit Integration plugin.\n\nSite: %s\nTime: %s\n\nIf you received this email, your Emailit integration is working correctly!", 'emailit-integration'),
-                home_url(),
-                current_time('mysql')
-            ),
-            'content_type' => 'text/plain'
+            'subject' => sprintf(__('✅ Test Email from %s - Emailit Integration', 'emailit-integration'), $site_name),
+            'message' => $this->get_html_test_email_template($site_name, $site_url, $current_time),
+            'content_type' => 'text/html'
         );
 
         return $this->send_email($test_data);
+    }
+
+    /**
+     * Get HTML template for test emails
+     */
+    private function get_html_test_email_template($site_name, $site_url, $current_time) {
+        $logo_url = get_site_icon_url(64) ?: plugins_url('admin/assets/images/emailit-logo.png', EMAILIT_PLUGIN_FILE);
+
+        return '
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html(__('Test Email - Emailit Integration', 'emailit-integration')) . '</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8f9fa; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; }
+        .header .subtitle { color: #e8f4fd; margin: 10px 0 0; font-size: 16px; }
+        .content { padding: 40px 30px; }
+        .success-badge { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; }
+        .success-badge .icon { font-size: 48px; margin-bottom: 10px; color: #28a745; }
+        .success-badge h2 { color: #155724; margin: 0 0 10px; font-size: 24px; }
+        .success-badge p { color: #155724; margin: 0; font-size: 16px; }
+        .info-card { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid #e9ecef; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-weight: 600; color: #495057; }
+        .info-value { color: #6c757d; font-family: monospace; }
+        .footer { background: #f8f9fa; padding: 30px; text-align: center; color: #6c757d; font-size: 14px; }
+        .footer a { color: #007cba; text-decoration: none; }
+        .cta-button { display: inline-block; background: #007cba; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 20px 0; }
+        @media (max-width: 600px) {
+            .content { padding: 30px 20px; }
+            .info-row { flex-direction: column; align-items: flex-start; text-align: left; }
+            .info-value { margin-top: 5px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 ' . esc_html__('Emailit Integration Test', 'emailit-integration') . '</h1>
+            <p class="subtitle">' . esc_html__('Your email integration is working perfectly!', 'emailit-integration') . '</p>
+        </div>
+
+        <div class="content">
+            <div class="success-badge">
+                <div class="icon">✅</div>
+                <h2>' . esc_html__('Test Successful', 'emailit-integration') . '</h2>
+                <p>' . esc_html__('This email was sent successfully through the Emailit API', 'emailit-integration') . '</p>
+            </div>
+
+            <p>' . sprintf(esc_html__('Hello! This is a test email sent from %s to verify that your Emailit integration is working correctly.', 'emailit-integration'), '<strong>' . esc_html($site_name) . '</strong>') . '</p>
+
+            <div class="info-card">
+                <h3 style="margin-top: 0; color: #495057;">' . esc_html__('Test Details', 'emailit-integration') . '</h3>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Website:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($site_name) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('URL:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($site_url) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Sent At:', 'emailit-integration') . '</span>
+                    <span class="info-value">' . esc_html($current_time) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Plugin Version:', 'emailit-integration') . '</span>
+                    <span class="info-value">v' . esc_html(EMAILIT_VERSION) . '</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">' . esc_html__('Service:', 'emailit-integration') . '</span>
+                    <span class="info-value">Emailit API</span>
+                </div>
+            </div>
+
+            <p style="margin-top: 30px;">' . esc_html__('🎉 Congratulations! Your WordPress site is now successfully integrated with Emailit. All emails sent from your website will now be delivered through the Emailit service.', 'emailit-integration') . '</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="' . esc_url(admin_url('options-general.php?page=emailit-settings')) . '" class="cta-button">' . esc_html__('View Plugin Settings', 'emailit-integration') . '</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>' . sprintf(
+                esc_html__('This email was sent by the %s plugin. %s', 'emailit-integration'),
+                '<strong>Emailit Integration</strong>',
+                '<a href="https://emailit.com/" target="_blank">Learn more about Emailit</a>'
+            ) . '</p>
+            <p style="margin-top: 10px; font-size: 12px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
+        </div>
+    </div>
+</body>
+</html>';
     }
 
     /**

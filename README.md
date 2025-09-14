@@ -5,7 +5,7 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.1.0-green.svg)
+![Version](https://img.shields.io/badge/Version-2.2.0-green.svg)
 
 ## 🚀 Features
 
@@ -30,11 +30,16 @@ A comprehensive WordPress plugin that replaces the default `wp_mail()` function 
 - **Security First** - Input sanitization, output escaping, encrypted API key storage
 - **Fallback System** - Automatic fallback to wp_mail() if Emailit API fails
 
-### Admin Interface
+### Admin Interface 🎨
+- **Modern UI Design** - Beautiful interface with gradients, animations, and professional styling
+- **Enhanced Test Emails** - Rich HTML templates for professional test email presentation
+- **Interactive Dashboard** - Animated statistics cards and smooth transitions
+- **Visual Feedback** - Loading states, progress indicators, and enhanced button interactions
+- **Responsive Design** - Optimized for desktop, tablet, and mobile devices
 - **Professional Dashboard** - Clean, intuitive admin interface with tabbed navigation
 - **Email Logs** - Detailed email history with search, filtering, and pagination
 - **Statistics Dashboard** - Email performance metrics and analytics
-- **Test Email Functionality** - Send test emails to verify configuration
+- **Advanced Diagnostics** - Visual system diagnostics with status indicators (WP_DEBUG mode)
 - **Webhook Testing** - Built-in webhook endpoint testing tools
 
 ---
@@ -731,7 +736,23 @@ For enterprise support, custom development, or priority assistance:
 
 ## 📋 Changelog
 
-### Version 1.0.0 (Current)
+### Version 2.2.0 (Current) 🎨
+- ✅ **Enhanced UX**: Beautiful HTML test email templates with professional styling
+- ✅ **Improved Admin UI**: Modern design with gradients, shadows, and animations
+- ✅ **Better Visual Feedback**: Loading states, progress indicators, and enhanced button interactions
+- ✅ **Professional Test Emails**: Rich HTML templates for both direct API and wp_mail() tests
+- ✅ **Enhanced Diagnostics**: Visual diagnostic results with status indicators
+- ✅ **Responsive Design**: Improved mobile and tablet experience
+- ✅ **Debug Mode Integration**: Plugin diagnostics only visible when WP_DEBUG is enabled
+- ✅ **Animation System**: Smooth transitions and hover effects throughout the interface
+
+### Version 2.1.0
+- ✅ Enhanced webhook filtering for multi-site workspaces
+- ✅ Improved error handling and debugging capabilities
+- ✅ Better API key validation and security
+- ✅ Performance optimizations for log queries
+
+### Version 1.0.0
 - ✅ Complete wp_mail() replacement
 - ✅ Emailit API integration
 - ✅ Email logging and tracking

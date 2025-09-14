@@ -619,11 +619,319 @@
     };
 
     /**
+     * Enhanced UI functionality
+     */
+    var EmailitEnhanced = {
+        init: function() {
+            this.addEnhancedStyles();
+            this.enhanceTestButtons();
+            this.enhanceFormFields();
+        },
+
+        addEnhancedStyles: function() {
+            if (!$('#emailit-enhanced-styles').length) {
+                var styles = `
+                    <style id="emailit-enhanced-styles">
+                        .emailit-progress-text {
+                            color: #0073aa;
+                            font-style: italic;
+                            margin: 10px 0;
+                            display: flex;
+                            align-items: center;
+                            animation: fadeInOut 2s infinite;
+                        }
+                        .emailit-progress-text::before {
+                            content: '';
+                            width: 12px;
+                            height: 12px;
+                            border: 2px solid #0073aa;
+                            border-top: 2px solid transparent;
+                            border-radius: 50%;
+                            margin-right: 8px;
+                            animation: spin 1s linear infinite;
+                        }
+                        @keyframes fadeInOut {
+                            0%, 100% { opacity: 0.7; }
+                            50% { opacity: 1; }
+                        }
+                        @keyframes spin {
+                            from { transform: rotate(0deg); }
+                            to { transform: rotate(360deg); }
+                        }
+                        .diagnostic-grid {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                            gap: 15px;
+                            margin-top: 15px;
+                        }
+                        .diagnostic-item {
+                            display: flex;
+                            justify-content: space-between;
+                            padding: 10px;
+                            background: #f8f9fa;
+                            border-radius: 6px;
+                        }
+                        .diagnostic-label {
+                            font-weight: 600;
+                            color: #495057;
+                        }
+                        .diagnostic-value {
+                            font-family: monospace;
+                        }
+                        .diagnostic-value.success {
+                            color: #28a745;
+                        }
+                        .diagnostic-value.error {
+                            color: #dc3545;
+                        }
+                        .emailit-stat-card {
+                            opacity: 0;
+                            transform: translateY(20px);
+                            transition: all 0.4s ease;
+                        }
+                        .emailit-stat-card.animate-in {
+                            opacity: 1;
+                            transform: translateY(0);
+                        }
+                        .button.enhanced-hover:hover:not(:disabled) {
+                            transform: translateY(-2px);
+                            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                        }
+                        .emailit-form-table .field-wrapper.focused {
+                            transform: scale(1.02);
+                            transition: transform 0.2s ease;
+                        }
+                    </style>
+                `;
+                $('head').append(styles);
+            }
+        },
+
+        enhanceTestButtons: function() {
+            var self = this;
+
+            // Enhanced test email
+            $('#emailit-test-email').off('click').on('click', function(e) {
+                e.preventDefault();
+                self.handleTestEmail($(this), '#emailit-test-result');
+            });
+
+            // Enhanced WordPress test
+            $('#emailit-wordpress-test').off('click').on('click', function(e) {
+                e.preventDefault();
+                self.handleWordPressTest($(this), '#emailit-wordpress-test-result');
+            });
+
+            // Enhanced diagnostic test
+            $('#emailit-diagnostic').off('click').on('click', function(e) {
+                e.preventDefault();
+                self.handleDiagnosticTest($(this), '#emailit-diagnostic-result');
+            });
+
+            // Add hover effects
+            $('.button').addClass('enhanced-hover');
+        },
+
+        handleTestEmail: function($button, resultSelector) {
+            var $result = $(resultSelector);
+            var originalText = $button.text();
+
+            var data = {
+                action: 'emailit_send_test_email',
+                nonce: emailit_ajax.nonce,
+                test_email: $('#emailit_test_email').val() || emailit_ajax.strings.admin_email
+            };
+
+            this.showProgress($button, $result, 'Sending Email...', [
+                'Connecting to Emailit API...',
+                'Preparing email content...',
+                'Sending through Emailit...',
+                'Verifying delivery...'
+            ]);
+
+            var self = this;
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    self.clearProgress();
+                    if (response.success) {
+                        self.showSuccess($result, 'Test Email Sent Successfully!', response.data.message);
+                    } else {
+                        self.showError($result, 'Test Email Failed', response.data.message || 'Unknown error occurred');
+                    }
+                })
+                .fail(function() {
+                    self.clearProgress();
+                    self.showError($result, 'Network Error', 'Failed to send test email. Please check your connection and try again.');
+                })
+                .always(function() {
+                    self.resetButton($button, originalText);
+                });
+        },
+
+        handleWordPressTest: function($button, resultSelector) {
+            var $result = $(resultSelector);
+            var originalText = $button.text();
+
+            var data = {
+                action: 'emailit_send_wordpress_test',
+                nonce: emailit_ajax.nonce,
+                test_email: $('#emailit_wordpress_test_email').val() || emailit_ajax.strings.admin_email
+            };
+
+            this.showProgress($button, $result, 'Testing wp_mail()...', [
+                'Initializing wp_mail() test...',
+                'Intercepting wp_mail() call...',
+                'Processing through plugin...',
+                'Routing to Emailit API...'
+            ]);
+
+            var self = this;
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    self.clearProgress();
+                    if (response.success) {
+                        self.showSuccess($result, 'WordPress Integration Test Passed!', response.data.message);
+                    } else {
+                        self.showError($result, 'WordPress Integration Test Failed', response.data.message || 'wp_mail() test failed');
+                    }
+                })
+                .fail(function() {
+                    self.clearProgress();
+                    self.showError($result, 'WordPress Test Error', 'Failed to complete WordPress integration test.');
+                })
+                .always(function() {
+                    self.resetButton($button, originalText);
+                });
+        },
+
+        handleDiagnosticTest: function($button, resultSelector) {
+            var $result = $(resultSelector);
+            var originalText = $button.text();
+
+            var data = {
+                action: 'emailit_diagnostic',
+                nonce: emailit_ajax.nonce
+            };
+
+            this.showProgress($button, $result, 'Running Diagnostics...', [
+                'Starting system diagnostic...',
+                'Checking plugin status...',
+                'Verifying AJAX connectivity...',
+                'Testing permissions...'
+            ]);
+
+            var self = this;
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    self.clearProgress();
+                    if (response.success) {
+                        var diagnosticInfo = response.data.diagnostic_info;
+                        var html = '<div class="diagnostic-grid">';
+                        html += '<div class="diagnostic-item">';
+                        html += '<span class="diagnostic-label">Plugin Version:</span>';
+                        html += '<span class="diagnostic-value">v' + diagnosticInfo.plugin_version + '</span>';
+                        html += '</div>';
+                        html += '<div class="diagnostic-item">';
+                        html += '<span class="diagnostic-label">AJAX Connection:</span>';
+                        html += '<span class="diagnostic-value success">✅ Working</span>';
+                        html += '</div>';
+                        html += '<div class="diagnostic-item">';
+                        html += '<span class="diagnostic-label">wp_mail() Function:</span>';
+                        html += '<span class="diagnostic-value ' + (diagnosticInfo.wp_mail_function_exists ? 'success' : 'error') + '">';
+                        html += diagnosticInfo.wp_mail_function_exists ? '✅ Available' : '❌ Missing';
+                        html += '</span></div>';
+                        html += '<div class="diagnostic-item">';
+                        html += '<span class="diagnostic-label">Admin Access:</span>';
+                        html += '<span class="diagnostic-value success">✅ Authorized</span>';
+                        html += '</div></div>';
+
+                        self.showSuccess($result, 'System Diagnostic Complete', html);
+                    } else {
+                        self.showError($result, 'Diagnostic Failed', response.data.message || 'Unable to complete system diagnostic');
+                    }
+                })
+                .fail(function() {
+                    self.clearProgress();
+                    self.showError($result, 'Diagnostic Error', 'Failed to run system diagnostic.');
+                })
+                .always(function() {
+                    self.resetButton($button, originalText);
+                });
+        },
+
+        showProgress: function($button, $result, buttonText, steps) {
+            $button.prop('disabled', true).addClass('emailit-loading-state').text(buttonText);
+            $result.removeClass('show success error').hide();
+
+            $('.emailit-progress-text').remove();
+
+            if (steps && steps.length) {
+                var $progressText = $('<div class="emailit-progress-text">').text(steps[0]);
+                $result.after($progressText);
+
+                var currentStep = 0;
+                this.progressInterval = setInterval(function() {
+                    currentStep = (currentStep + 1) % steps.length;
+                    $progressText.text(steps[currentStep]);
+                }, 800);
+            }
+        },
+
+        clearProgress: function() {
+            $('.emailit-progress-text').remove();
+            if (this.progressInterval) {
+                clearInterval(this.progressInterval);
+                this.progressInterval = null;
+            }
+        },
+
+        showSuccess: function($result, title, content) {
+            var html = '<strong>' + title + '</strong><br>' + content;
+            $result.removeClass('error').addClass('success').html(html).addClass('show');
+        },
+
+        showError: function($result, title, content) {
+            var html = '<strong>' + title + '</strong><br>' + content;
+            $result.removeClass('success').addClass('error').html(html).addClass('show');
+        },
+
+        resetButton: function($button, originalText) {
+            $button.prop('disabled', false).removeClass('emailit-loading-state').text(originalText);
+        },
+
+        enhanceFormFields: function() {
+            // Add focus effects to form fields
+            $('.emailit-form-table input, .emailit-form-table textarea').each(function() {
+                var $field = $(this);
+                var $wrapper = $('<div class="field-wrapper">').insertAfter($field);
+                $wrapper.prepend($field);
+
+                $field.on('focus', function() {
+                    $wrapper.addClass('focused');
+                }).on('blur', function() {
+                    $wrapper.removeClass('focused');
+                });
+            });
+
+            // Animate stat cards
+            setTimeout(function() {
+                $('.emailit-stat-card').each(function(index) {
+                    var $card = $(this);
+                    setTimeout(function() {
+                        $card.addClass('animate-in');
+                    }, index * 100);
+                });
+            }, 500);
+        }
+    };
+
+    /**
      * Initialize when document ready
      */
     $(document).ready(function() {
         EmailitAdmin.init();
         EmailitStats.init();
+        EmailitEnhanced.init();
 
         // Initialize logging options visibility
         EmailitAdmin.toggleLoggingOptions.call($('#emailit_enable_logging'));
