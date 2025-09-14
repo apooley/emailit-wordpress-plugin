@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.0.0
+ * Version: 2.1.0
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.0.0');
+define('EMAILIT_VERSION', '2.1.0');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -208,8 +208,10 @@ class Emailit_Integration {
         add_action('admin_init', array($this->admin, 'init'));
         add_action('admin_menu', array($this->admin, 'add_menu_pages'));
 
-        // REST API init
-        add_action('rest_api_init', array($this->webhook, 'register_routes'));
+        // REST API init - only register webhook routes if webhooks are enabled
+        if (get_option('emailit_enable_webhooks', 1)) {
+            add_action('rest_api_init', array($this->webhook, 'register_routes'));
+        }
 
         // Enqueue scripts and styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
@@ -247,6 +249,8 @@ class Emailit_Integration {
                 'sending' => __('Sending...', 'emailit-integration'),
                 'sent' => __('Test email sent successfully!', 'emailit-integration'),
                 'error' => __('Error sending test email. Check the logs for details.', 'emailit-integration'),
+                'confirm_delete' => __('Are you sure you want to delete this email log? This action cannot be undone.', 'emailit-integration'),
+                'admin_email' => get_option('admin_email', '')
             )
         ));
     }

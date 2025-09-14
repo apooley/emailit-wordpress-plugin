@@ -25,6 +25,7 @@ class Emailit_Logger {
      */
     const STATUS_PENDING = 'pending';
     const STATUS_SENT = 'sent';
+    const STATUS_SENT_TO_API = 'sent_to_api';
     const STATUS_DELIVERED = 'delivered';
     const STATUS_FAILED = 'failed';
     const STATUS_BOUNCED = 'bounced';
@@ -46,6 +47,9 @@ class Emailit_Logger {
 
         $this->logs_table = $wpdb->prefix . 'emailit_logs';
         $this->webhook_logs_table = $wpdb->prefix . 'emailit_webhook_logs';
+
+        // Ensure database schema is up to date
+        $this->maybe_upgrade_schema();
     }
 
     /**
@@ -99,7 +103,7 @@ class Emailit_Logger {
             if (isset($api_response['data']['message_id'])) {
                 $log_data['message_id'] = sanitize_text_field($api_response['data']['message_id']);
             }
-            if ($status === self::STATUS_SENT) {
+            if ($status === self::STATUS_SENT || $status === self::STATUS_SENT_TO_API) {
                 $log_data['sent_at'] = current_time('mysql');
             }
         }
@@ -576,5 +580,43 @@ class Emailit_Logger {
         $text = wp_strip_all_tags($html);
         $text = preg_replace('/\n\s*\n/', "\n\n", $text);
         return trim($text);
+    }
+
+    /**
+     * Check and upgrade database schema if needed
+     */
+    private function maybe_upgrade_schema() {
+        global $wpdb;
+
+        try {
+            // Check if queue_id column exists
+            $column_exists = $wpdb->get_results($wpdb->prepare(
+                "SHOW COLUMNS FROM `{$this->logs_table}` LIKE %s",
+                'queue_id'
+            ));
+
+            if (empty($column_exists)) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] Auto-upgrading database schema: adding queue_id column');
+                }
+
+                // Add queue_id column
+                $result = $wpdb->query("ALTER TABLE `{$this->logs_table}` ADD COLUMN `queue_id` bigint(20) UNSIGNED DEFAULT NULL AFTER `message_id`");
+
+                if ($result !== false) {
+                    // Add index
+                    $wpdb->query("ALTER TABLE `{$this->logs_table}` ADD INDEX `idx_queue_id` (`queue_id`)");
+
+                    error_log('[Emailit] Successfully added queue_id column to email logs table');
+
+                    // Update database version
+                    update_option('emailit_db_version', '2.1.0');
+                } else {
+                    error_log('[Emailit] Failed to add queue_id column to email logs table: ' . $wpdb->last_error);
+                }
+            }
+        } catch (Exception $e) {
+            error_log('[Emailit] Exception during schema upgrade: ' . $e->getMessage());
+        }
     }
 }

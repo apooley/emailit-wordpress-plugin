@@ -207,8 +207,14 @@ class Emailit_Mailer {
         // Send via API
         $api_response = $this->api->send_email($email_data);
 
-        // Determine status based on response
-        $status = is_wp_error($api_response) ? Emailit_Logger::STATUS_FAILED : Emailit_Logger::STATUS_SENT;
+        // Determine status based on response and webhook settings
+        if (is_wp_error($api_response)) {
+            $status = Emailit_Logger::STATUS_FAILED;
+        } else {
+            // Use different status based on webhook settings
+            $webhooks_enabled = get_option('emailit_enable_webhooks', 1);
+            $status = $webhooks_enabled ? Emailit_Logger::STATUS_SENT : Emailit_Logger::STATUS_SENT_TO_API;
+        }
 
         // Log the email
         $log_id = $this->logger->log_email($email_data, $api_response, $status);
@@ -386,7 +392,7 @@ class Emailit_Mailer {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 $this->logger->log('Header injection attempt detected', Emailit_Logger::LEVEL_WARNING, array(
                     'value' => $value,
-                    'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+                    'ip' => $this->get_client_ip()
                 ));
             }
             return false; // Reject the entire header
@@ -810,6 +816,47 @@ class Emailit_Mailer {
      */
     public function get_queue() {
         return $this->queue;
+    }
+
+    /**
+     * Get client IP address securely
+     */
+    private function get_client_ip() {
+        try {
+            $headers = array(
+                'HTTP_X_FORWARDED_FOR',
+                'HTTP_X_REAL_IP',
+                'HTTP_CF_CONNECTING_IP',
+                'REMOTE_ADDR'
+            );
+
+            foreach ($headers as $header) {
+                if (!empty($_SERVER[$header])) {
+                    $ip = trim($_SERVER[$header]);
+
+                    // Handle comma-separated IPs (take first one)
+                    if (strpos($ip, ',') !== false) {
+                        $ip = trim(explode(',', $ip)[0]);
+                    }
+
+                    // Validate and ensure it's a real IP (not private/reserved)
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                        return $ip;
+                    }
+                }
+            }
+
+            // Fallback - but validate it too
+            $fallback = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            return filter_var($fallback, FILTER_VALIDATE_IP) ? $fallback : '127.0.0.1';
+
+        } catch (Exception $e) {
+            // If anything goes wrong, return safe default
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Error in get_client_ip: ' . $e->getMessage());
+            }
+            return '127.0.0.1';
+        }
     }
 
     /**

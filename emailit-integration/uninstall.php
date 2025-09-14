@@ -47,11 +47,13 @@ class Emailit_Uninstaller {
 
         $tables = array(
             $wpdb->prefix . 'emailit_logs',
-            $wpdb->prefix . 'emailit_webhook_logs'
+            $wpdb->prefix . 'emailit_webhook_logs',
+            $wpdb->prefix . 'emailit_queue'
         );
 
         foreach ($tables as $table) {
-            $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %i", $table));
+            // Use direct escaping for table names since %i placeholder doesn't exist
+            $wpdb->query("DROP TABLE IF EXISTS `" . esc_sql($table) . "`");
         }
     }
 

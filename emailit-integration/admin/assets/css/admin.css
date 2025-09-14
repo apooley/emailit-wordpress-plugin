@@ -193,6 +193,12 @@
     border: 1px solid #bee5eb;
 }
 
+.emailit-status.sent_to_api {
+    background: #e2e3e5;
+    color: #383d41;
+    border: 1px solid #d6d8db;
+}
+
 .emailit-status.delivered {
     background: #d4edda;
     color: #155724;

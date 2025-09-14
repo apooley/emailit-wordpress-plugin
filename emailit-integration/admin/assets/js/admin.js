@@ -45,6 +45,7 @@
 
             // Settings changes
             $(document).on('change', '#emailit_enable_logging', this.toggleLoggingOptions);
+            $(document).on('change', '#emailit_enable_webhooks', this.toggleWebhookOptions);
 
             // API key field enhancements
             $(document).on('focus', '#emailit_api_key', this.handleApiKeyFocus);
@@ -478,6 +479,22 @@
         },
 
         /**
+         * Toggle webhook-related options
+         */
+        toggleWebhookOptions: function() {
+            var $webhookSecret = $('#emailit_webhook_secret');
+            var isEnabled = $(this).is(':checked');
+
+            if (isEnabled) {
+                $webhookSecret.prop('disabled', false);
+                $webhookSecret.parent().find('.description').show();
+            } else {
+                $webhookSecret.prop('disabled', true);
+                $webhookSecret.parent().find('.description').hide();
+            }
+        },
+
+        /**
          * Validate email address
          */
         isValidEmail: function(email) {
@@ -610,6 +627,9 @@
 
         // Initialize logging options visibility
         EmailitAdmin.toggleLoggingOptions.call($('#emailit_enable_logging'));
+
+        // Initialize webhook options visibility
+        EmailitAdmin.toggleWebhookOptions.call($('#emailit_enable_webhooks'));
     });
 
     // Expose globally for other scripts

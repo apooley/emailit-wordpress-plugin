@@ -653,4 +653,144 @@ class Emailit_Queue {
 
         return $minutes;
     }
+
+    /**
+     * Delete a specific queue item
+     */
+    public function delete_queue_item($queue_id) {
+        global $wpdb;
+
+        $queue_id = (int) $queue_id;
+        if ($queue_id <= 0) {
+            return new WP_Error('invalid_queue_id', __('Invalid queue ID provided.', 'emailit-integration'));
+        }
+
+        // Get queue item details for logging
+        $queue_item = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$this->queue_table} WHERE id = %d",
+            $queue_id
+        ), ARRAY_A);
+
+        if (!$queue_item) {
+            return new WP_Error('queue_item_not_found', __('Queue item not found.', 'emailit-integration'));
+        }
+
+        // Delete the queue item
+        $deleted = $wpdb->delete(
+            $this->queue_table,
+            array('id' => $queue_id),
+            array('%d')
+        );
+
+        if ($deleted === false) {
+            return new WP_Error('delete_failed', __('Failed to delete queue item.', 'emailit-integration'));
+        }
+
+        // Also remove associated email log if it exists
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        $wpdb->delete(
+            $logs_table,
+            array('queue_id' => $queue_id),
+            array('%d')
+        );
+
+        // Log the deletion
+        if ($this->logger) {
+            $this->logger->log(
+                sprintf('Queue item %d deleted manually (status: %s)', $queue_id, $queue_item['status']),
+                'info',
+                array('queue_id' => $queue_id, 'status' => $queue_item['status'])
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Get a single queue item by ID
+     */
+    public function get_queue_item($queue_id) {
+        global $wpdb;
+
+        $queue_id = (int) $queue_id;
+        if ($queue_id <= 0) {
+            return null;
+        }
+
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$this->queue_table} WHERE id = %d",
+            $queue_id
+        ), ARRAY_A);
+    }
+
+    /**
+     * Bulk delete queue items
+     */
+    public function bulk_delete_queue_items($queue_ids, $status_filter = '') {
+        global $wpdb;
+
+        if (empty($queue_ids) || !is_array($queue_ids)) {
+            return new WP_Error('invalid_queue_ids', __('No valid queue IDs provided.', 'emailit-integration'));
+        }
+
+        // Sanitize queue IDs
+        $queue_ids = array_map('intval', $queue_ids);
+        $queue_ids = array_filter($queue_ids, function($id) { return $id > 0; });
+
+        if (empty($queue_ids)) {
+            return new WP_Error('no_valid_ids', __('No valid queue IDs provided.', 'emailit-integration'));
+        }
+
+        $placeholders = implode(',', array_fill(0, count($queue_ids), '%d'));
+        $where_clause = "id IN ($placeholders)";
+        $values = $queue_ids;
+
+        // Add status filter if provided
+        if (!empty($status_filter)) {
+            $where_clause .= " AND status = %s";
+            $values[] = $status_filter;
+        }
+
+        // Get items to be deleted for logging
+        $query = $wpdb->prepare(
+            "SELECT id, status FROM {$this->queue_table} WHERE $where_clause",
+            $values
+        );
+        $items_to_delete = $wpdb->get_results($query, ARRAY_A);
+
+        // Delete queue items
+        $deleted = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$this->queue_table} WHERE $where_clause",
+            $values
+        ));
+
+        if ($deleted === false) {
+            return new WP_Error('bulk_delete_failed', __('Failed to delete queue items.', 'emailit-integration'));
+        }
+
+        // Also remove associated email logs
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$logs_table} WHERE queue_id IN ($placeholders)",
+            $queue_ids
+        ));
+
+        // Log the bulk deletion
+        if ($this->logger) {
+            $statuses = array_column($items_to_delete, 'status');
+            $status_counts = array_count_values($statuses);
+            $status_summary = array();
+            foreach ($status_counts as $status => $count) {
+                $status_summary[] = "$status: $count";
+            }
+
+            $this->logger->log(
+                sprintf('Bulk deleted %d queue items (%s)', $deleted, implode(', ', $status_summary)),
+                'info',
+                array('deleted_count' => $deleted, 'queue_ids' => $queue_ids, 'status_filter' => $status_filter)
+            );
+        }
+
+        return $deleted;
+    }
 }

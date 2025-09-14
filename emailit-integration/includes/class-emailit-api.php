@@ -248,10 +248,10 @@ class Emailit_API {
         // Apply filters
         $args = apply_filters('emailit_api_args', $args, $request_data);
 
-        // Debug logging
+        // Debug logging (sanitized to prevent API key exposure)
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('Emailit API Request URL: ' . $this->api_endpoint);
-            error_log('Emailit API Request Args: ' . print_r($args, true));
+            error_log('[Emailit] API Request URL: ' . $this->api_endpoint);
+            error_log('[Emailit] API Request Args: ' . print_r($this->sanitize_debug_args($args), true));
         }
 
         // Make request
@@ -340,32 +340,132 @@ class Emailit_API {
         $prepared = array();
 
         foreach ($attachments as $attachment) {
-            if (is_string($attachment) && file_exists($attachment)) {
-                // File path
-                $file_content = file_get_contents($attachment);
+            $file_path = null;
+            $file_name = null;
+            $file_type = null;
+
+            // Extract file path and info
+            if (is_string($attachment)) {
+                $file_path = $attachment;
+                $file_name = basename($attachment);
+            } elseif (is_array($attachment) && isset($attachment['path'])) {
+                $file_path = $attachment['path'];
+                $file_name = isset($attachment['name']) ? $attachment['name'] : basename($attachment['path']);
+                $file_type = isset($attachment['type']) ? $attachment['type'] : null;
+            } else {
+                continue; // Skip invalid attachment format
+            }
+
+            // Security checks
+            if (!$this->is_safe_attachment($file_path, $file_name)) {
+                continue; // Skip unsafe files
+            }
+
+            if (file_exists($file_path)) {
+                $file_content = file_get_contents($file_path);
                 if ($file_content !== false) {
                     $prepared[] = array(
-                        'filename' => basename($attachment),
+                        'filename' => sanitize_file_name($file_name),
                         'content' => base64_encode($file_content),
-                        'content_type' => mime_content_type($attachment)
+                        'content_type' => $file_type ?: mime_content_type($file_path)
                     );
-                }
-            } elseif (is_array($attachment) && isset($attachment['path'])) {
-                // Array with file info
-                if (file_exists($attachment['path'])) {
-                    $file_content = file_get_contents($attachment['path']);
-                    if ($file_content !== false) {
-                        $prepared[] = array(
-                            'filename' => isset($attachment['name']) ? $attachment['name'] : basename($attachment['path']),
-                            'content' => base64_encode($file_content),
-                            'content_type' => isset($attachment['type']) ? $attachment['type'] : mime_content_type($attachment['path'])
-                        );
-                    }
                 }
             }
         }
 
         return $prepared;
+    }
+
+    /**
+     * Check if attachment is safe to process
+     */
+    private function is_safe_attachment($file_path, $file_name) {
+        // Resolve real path to prevent directory traversal
+        $real_path = realpath($file_path);
+
+        if (!$real_path) {
+            return false; // File doesn't exist or path is invalid
+        }
+
+        // Get WordPress upload directory
+        $upload_dir = wp_upload_dir();
+        $allowed_base_dirs = array(
+            realpath($upload_dir['basedir']),
+            realpath(WP_CONTENT_DIR . '/uploads'),
+            realpath(ABSPATH . 'wp-content/uploads')
+        );
+
+        // Add tmp directory for WordPress-generated attachments
+        if (function_exists('sys_get_temp_dir')) {
+            $allowed_base_dirs[] = realpath(sys_get_temp_dir());
+        }
+
+        // Check if file is within allowed directories
+        $in_allowed_dir = false;
+        foreach ($allowed_base_dirs as $allowed_dir) {
+            if ($allowed_dir && strpos($real_path, $allowed_dir) === 0) {
+                $in_allowed_dir = true;
+                break;
+            }
+        }
+
+        if (!$in_allowed_dir) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked file outside allowed directories: ' . $real_path);
+            }
+            return false;
+        }
+
+        // Check file size (10MB limit)
+        $file_size = filesize($real_path);
+        if ($file_size > 10 * 1024 * 1024) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked oversized file: ' . $real_path . ' (' . $file_size . ' bytes)');
+            }
+            return false;
+        }
+
+        // Check MIME type against allowlist
+        $mime_type = mime_content_type($real_path);
+        $allowed_types = apply_filters('emailit_allowed_attachment_types', array(
+            // Images
+            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+            // Documents
+            'application/pdf', 'text/plain', 'text/csv',
+            'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            // Archives (be careful with these)
+            'application/zip', 'application/x-zip-compressed'
+        ));
+
+        if (!in_array($mime_type, $allowed_types)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked file with disallowed MIME type: ' . $mime_type . ' for file: ' . $real_path);
+            }
+            return false;
+        }
+
+        // Check filename for dangerous extensions
+        $dangerous_extensions = array('php', 'php3', 'php4', 'php5', 'phtml', 'exe', 'bat', 'com', 'cmd', 'scr', 'vbs', 'js', 'jar');
+        $file_extension = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+
+        if (in_array($file_extension, $dangerous_extensions)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked file with dangerous extension: ' . $file_extension . ' for file: ' . $file_name);
+            }
+            return false;
+        }
+
+        // Additional check for double extensions (file.txt.php)
+        if (preg_match('/\.(php|exe|bat|com|cmd|scr|vbs|js)(\.|$)/i', $file_name)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked file with suspicious double extension: ' . $file_name);
+            }
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -660,6 +760,77 @@ class Emailit_API {
         $decrypted = openssl_decrypt(base64_decode($encrypted_string), 'AES-256-CBC', $key, 0, substr($key, 0, 16));
 
         return $decrypted !== false ? $decrypted : '';
+    }
+
+    /**
+     * Sanitize debug arguments to prevent sensitive data exposure
+     */
+    private function sanitize_debug_args($args) {
+        $sanitized = $args;
+
+        // Redact Authorization header (contains API key)
+        if (isset($sanitized['headers']['Authorization'])) {
+            $auth_header = $sanitized['headers']['Authorization'];
+            if (strpos($auth_header, 'Bearer ') === 0) {
+                $sanitized['headers']['Authorization'] = 'Bearer [REDACTED]';
+            } else {
+                $sanitized['headers']['Authorization'] = '[REDACTED]';
+            }
+        }
+
+        // Redact any other potentially sensitive headers
+        $sensitive_headers = array('X-API-Key', 'X-Auth-Token', 'Authorization');
+        foreach ($sensitive_headers as $header) {
+            if (isset($sanitized['headers'][$header])) {
+                $sanitized['headers'][$header] = '[REDACTED]';
+            }
+        }
+
+        // Redact sensitive data in body if it's an array or object
+        if (isset($sanitized['body'])) {
+            if (is_string($sanitized['body'])) {
+                // Try to decode JSON to sanitize
+                $decoded = json_decode($sanitized['body'], true);
+                if ($decoded !== null) {
+                    $decoded = $this->redact_sensitive_data($decoded);
+                    $sanitized['body'] = wp_json_encode($decoded);
+                }
+            } elseif (is_array($sanitized['body'])) {
+                $sanitized['body'] = $this->redact_sensitive_data($sanitized['body']);
+            }
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * Redact sensitive data from arrays/objects
+     */
+    private function redact_sensitive_data($data) {
+        if (!is_array($data)) {
+            return $data;
+        }
+
+        $sensitive_keys = array('api_key', 'password', 'token', 'secret', 'key', 'auth', 'authorization');
+
+        foreach ($data as $key => $value) {
+            $lower_key = strtolower($key);
+
+            // Check if key contains sensitive terms
+            foreach ($sensitive_keys as $sensitive_key) {
+                if (strpos($lower_key, $sensitive_key) !== false) {
+                    $data[$key] = '[REDACTED]';
+                    break;
+                }
+            }
+
+            // Recursively process nested arrays
+            if (is_array($value)) {
+                $data[$key] = $this->redact_sensitive_data($value);
+            }
+        }
+
+        return $data;
     }
 
 }

@@ -180,6 +180,11 @@ class Emailit_Admin {
             'default' => wp_generate_password(32, false)
         ));
 
+        register_setting('emailit-settings', 'emailit_enable_webhooks', array(
+            'type' => 'boolean',
+            'default' => 1
+        ));
+
         // Queue/Async settings
         register_setting('emailit-settings', 'emailit_enable_queue', array(
             'type' => 'boolean',
@@ -352,6 +357,14 @@ class Emailit_Admin {
         );
 
         add_settings_field(
+            'emailit_enable_webhooks',
+            __('Enable Webhooks', 'emailit-integration'),
+            array($this, 'enable_webhooks_field_callback'),
+            'emailit-settings',
+            'emailit_webhook_section'
+        );
+
+        add_settings_field(
             'emailit_webhook_secret',
             __('Webhook Secret', 'emailit-integration'),
             array($this, 'webhook_secret_field_callback'),
@@ -508,13 +521,24 @@ class Emailit_Admin {
         echo '<p class="description">' . __('API request timeout in seconds.', 'emailit-integration') . '</p>';
     }
 
+    public function enable_webhooks_field_callback() {
+        $value = get_option('emailit_enable_webhooks', 1);
+        echo '<input type="checkbox" id="emailit_enable_webhooks" name="emailit_enable_webhooks" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_enable_webhooks">' . __('Enable webhook status updates', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('When enabled, Emailit will send status updates (delivery, bounces, etc.) to your WordPress site. When disabled, emails will show as "Sent to API" without further status updates.', 'emailit-integration') . '</p>';
+    }
+
     public function webhook_secret_field_callback() {
         $value = get_option('emailit_webhook_secret', '');
         $webhook_url = rest_url('emailit/v1/webhook');
+        $webhooks_enabled = get_option('emailit_enable_webhooks', 1);
 
-        echo '<input type="text" id="emailit_webhook_secret" name="emailit_webhook_secret" value="' . esc_attr($value) . '" class="regular-text" />';
+        echo '<input type="text" id="emailit_webhook_secret" name="emailit_webhook_secret" value="' . esc_attr($value) . '" class="regular-text"' . ($webhooks_enabled ? '' : ' disabled') . ' />';
         echo '<p class="description">' . __('Enter the webhook secret provided by Emailit. This is used to validate webhook requests.', 'emailit-integration') . '</p>';
         echo '<p class="description">' . sprintf(__('Webhook endpoint: <code>%s</code>', 'emailit-integration'), esc_url($webhook_url)) . '</p>';
+        if (!$webhooks_enabled) {
+            echo '<p class="description" style="color: #666;"><em>' . __('Webhook secret is disabled when webhooks are turned off.', 'emailit-integration') . '</em></p>';
+        }
     }
 
     /**
@@ -549,6 +573,15 @@ class Emailit_Admin {
      * Handle WordPress wp_mail test email AJAX request
      */
     public function ajax_send_wordpress_test() {
+        // Set up error handling to ensure JSON response
+        @ini_set('display_errors', 0);
+
+        // Start output buffering to capture any stray output
+        ob_start();
+
+        // Register fatal error handler
+        register_shutdown_function(array($this, 'handle_ajax_fatal_error'));
+
         // Wrap the entire function in try-catch to capture any fatal errors
         try {
             // Debug logging (only when WP_DEBUG is enabled)
@@ -556,10 +589,21 @@ class Emailit_Admin {
                 error_log('[Emailit] WordPress test email handler started');
             }
 
+            // Verify request has nonce
+            if (!isset($_POST['nonce'])) {
+                wp_send_json_error(array(
+                    'message' => __('Missing nonce parameter.', 'emailit-integration')
+                ));
+                return;
+            }
+
             check_ajax_referer('emailit_admin_nonce', 'nonce');
 
             if (!current_user_can('manage_options')) {
-                wp_die(__('Insufficient permissions.', 'emailit-integration'));
+                wp_send_json_error(array(
+                    'message' => __('Insufficient permissions.', 'emailit-integration')
+                ));
+                return;
             }
 
             $test_email = sanitize_email($_POST['test_email']);
@@ -600,6 +644,8 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
 
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[Emailit] About to call wp_mail for test email to: ' . $test_email);
+                error_log('[Emailit] Test email subject: ' . $subject);
+                error_log('[Emailit] Test email headers: ' . print_r($headers, true));
             }
 
             // Send via wp_mail (which should be intercepted by our plugin)
@@ -607,6 +653,21 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
 
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[Emailit] wp_mail returned: ' . ($result ? 'true' : 'false'));
+
+                // Check if our mailer was used
+                if (function_exists('emailit_get_component')) {
+                    $mailer = emailit_get_component('mailer');
+                    if ($mailer) {
+                        error_log('[Emailit] Mailer component available');
+                    } else {
+                        error_log('[Emailit] WARNING: Mailer component not available');
+                    }
+                }
+            }
+
+            // Clean any stray output before JSON response
+            if (ob_get_length()) {
+                ob_clean();
             }
 
             if ($result) {
@@ -626,6 +687,11 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
             }
 
         } catch (Exception $e) {
+            // Clean any stray output before JSON response
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
             // Always log exceptions (critical errors)
             error_log('[Emailit] Exception in WordPress test: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
 
@@ -641,18 +707,23 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
             wp_send_json_error(array(
                 'message' => sprintf(__('WordPress test email failed with exception: %s', 'emailit-integration'), $e->getMessage()),
                 'technical_details' => defined('WP_DEBUG') && WP_DEBUG ? array(
-                    'file' => $e->getFile(),
+                    'file' => basename($e->getFile()),
                     'line' => $e->getLine()
                 ) : null
             ));
         } catch (Throwable $t) {
+            // Clean any stray output before JSON response
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
             // Always log fatal errors (critical)
             error_log('[Emailit] Fatal error in WordPress test: ' . $t->getMessage() . ' in ' . $t->getFile() . ':' . $t->getLine());
 
             wp_send_json_error(array(
                 'message' => sprintf(__('WordPress test email failed with fatal error: %s', 'emailit-integration'), $t->getMessage()),
                 'technical_details' => defined('WP_DEBUG') && WP_DEBUG ? array(
-                    'file' => $t->getFile(),
+                    'file' => basename($t->getFile()),
                     'line' => $t->getLine(),
                     'type' => 'Fatal Error'
                 ) : null
@@ -1407,5 +1478,35 @@ This email was sent via the Emailit WordPress plugin test function.', 'emailit-i
 
     public function sanitize_checkbox($value) {
         return !empty($value) ? 1 : 0;
+    }
+
+    /**
+     * Handle fatal errors during AJAX requests to ensure JSON response
+     */
+    public function handle_ajax_fatal_error() {
+        $error = error_get_last();
+        if ($error && ($error['type'] === E_ERROR || $error['type'] === E_PARSE || $error['type'] === E_COMPILE_ERROR)) {
+            // Clear any output that may have been sent
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+
+            // Log the fatal error
+            error_log('[Emailit] Fatal error in AJAX: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line']);
+
+            // Only send JSON if we haven't sent any output yet
+            if (!headers_sent()) {
+                // Send JSON error response
+                wp_send_json_error(array(
+                    'message' => __('A fatal error occurred during WordPress test email. The database schema has been updated automatically. Please try again.', 'emailit-integration'),
+                    'technical_details' => defined('WP_DEBUG') && WP_DEBUG ? array(
+                        'error' => $error['message'],
+                        'file' => basename($error['file']),
+                        'line' => $error['line'],
+                        'suggestion' => 'Database schema was automatically upgraded. The next request should work.'
+                    ) : null
+                ));
+            }
+        }
     }
 }

@@ -72,6 +72,7 @@ $stats = $logger->get_stats();
                     <option value=""><?php _e('All Statuses', 'emailit-integration'); ?></option>
                     <option value="pending" <?php selected($status_filter, 'pending'); ?>><?php _e('Pending', 'emailit-integration'); ?></option>
                     <option value="sent" <?php selected($status_filter, 'sent'); ?>><?php _e('Sent', 'emailit-integration'); ?></option>
+                    <option value="sent_to_api" <?php selected($status_filter, 'sent_to_api'); ?>><?php _e('Sent to API', 'emailit-integration'); ?></option>
                     <option value="delivered" <?php selected($status_filter, 'delivered'); ?>><?php _e('Delivered', 'emailit-integration'); ?></option>
                     <option value="failed" <?php selected($status_filter, 'failed'); ?>><?php _e('Failed', 'emailit-integration'); ?></option>
                     <option value="bounced" <?php selected($status_filter, 'bounced'); ?>><?php _e('Bounced', 'emailit-integration'); ?></option>
@@ -176,7 +177,22 @@ $stats = $logger->get_stats();
                         </td>
                         <td class="column-status">
                             <span class="emailit-status <?php echo esc_attr($log['status']); ?>">
-                                <?php echo esc_html(ucfirst($log['status'])); ?>
+                                <?php
+                                // Status display mapping
+                                $status_labels = array(
+                                    'pending' => __('Pending', 'emailit-integration'),
+                                    'sent' => __('Sent', 'emailit-integration'),
+                                    'sent_to_api' => __('Sent to API', 'emailit-integration'),
+                                    'delivered' => __('Delivered', 'emailit-integration'),
+                                    'failed' => __('Failed', 'emailit-integration'),
+                                    'bounced' => __('Bounced', 'emailit-integration'),
+                                    'complained' => __('Complained', 'emailit-integration'),
+                                    'held' => __('Held', 'emailit-integration'),
+                                    'delayed' => __('Delayed', 'emailit-integration')
+                                );
+                                $status_display = isset($status_labels[$log['status']]) ? $status_labels[$log['status']] : ucfirst($log['status']);
+                                echo esc_html($status_display);
+                                ?>
                             </span>
                         </td>
                         <td class="column-actions">
