@@ -106,11 +106,14 @@ class Emailit_Query_Optimizer {
         // Calculate offset
         $offset = ($args['page'] - 1) * $args['per_page'];
 
-        // Optimized query with proper indexing
+        // Optimized query with proper indexing and webhook status
+        $webhook_logs_table = $wpdb->prefix . 'emailit_webhook_logs';
         $query = $wpdb->prepare("
-            SELECT id, email_id, token, message_id, queue_id, to_email, from_email, 
-                   reply_to, subject, status, sent_at, created_at, updated_at
-            FROM {$this->logs_table}
+            SELECT e.id, e.email_id, e.token, e.message_id, e.queue_id, e.to_email, e.from_email, 
+                   e.reply_to, e.subject, e.status, e.sent_at, e.created_at, e.updated_at,
+                   w.status as webhook_status, w.event_type, w.processed_at as webhook_processed_at
+            FROM {$this->logs_table} e
+            LEFT JOIN {$webhook_logs_table} w ON e.email_id = w.email_id
             WHERE {$where_clause}
             ORDER BY {$args['orderby']} {$args['order']}
             LIMIT %d OFFSET %d

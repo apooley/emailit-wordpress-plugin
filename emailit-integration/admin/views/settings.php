@@ -15,7 +15,19 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
 ?>
 
 <div class="wrap emailit-admin-wrap">
-    <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+    <div class="emailit-header">
+        <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+        <div class="emailit-power-user-toggle">
+            <label class="emailit-toggle-switch">
+                <input type="checkbox" id="power-user-mode" <?php echo $admin->is_power_user_mode() ? 'checked' : ''; ?>>
+                <span class="slider round"></span>
+            </label>
+            <label for="power-user-mode" class="emailit-toggle-label">
+                <span class="power-user-text"><?php _e('Power User Mode', 'emailit-integration'); ?></span>
+                <span class="power-user-description"><?php _e('Show advanced features and detailed options', 'emailit-integration'); ?></span>
+            </label>
+        </div>
+    </div>
 
     <!-- Navigation Tabs -->
     <nav class="nav-tab-wrapper emailit-tab-nav">
@@ -23,17 +35,13 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
            class="nav-tab <?php echo $current_tab === 'general' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('General', 'emailit-integration'); ?>
         </a>
-        <a href="#performance" data-tab="performance"
-           class="nav-tab <?php echo $current_tab === 'performance' ? 'nav-tab-active active' : ''; ?>">
-            <?php _e('Performance', 'emailit-integration'); ?>
+        <a href="#logs" data-tab="logs"
+           class="nav-tab <?php echo $current_tab === 'logs' ? 'nav-tab-active active' : ''; ?>">
+            <?php _e('Logs & Statistics', 'emailit-integration'); ?>
         </a>
         <a href="#advanced" data-tab="advanced"
            class="nav-tab <?php echo $current_tab === 'advanced' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Advanced', 'emailit-integration'); ?>
-        </a>
-        <a href="#webhook" data-tab="webhook"
-           class="nav-tab <?php echo $current_tab === 'webhook' ? 'nav-tab-active active' : ''; ?>">
-            <?php _e('Webhook', 'emailit-integration'); ?>
         </a>
         <?php
         // Only show FluentCRM tab if FluentCRM is installed and active
@@ -46,10 +54,6 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             <?php _e('FluentCRM', 'emailit-integration'); ?>
         </a>
         <?php endif; ?>
-        <a href="#test" data-tab="test"
-           class="nav-tab <?php echo $current_tab === 'test' ? 'nav-tab-active active' : ''; ?>">
-            <?php _e('Test', 'emailit-integration'); ?>
-        </a>
     </nav>
 
     <form method="post" action="options.php">
@@ -59,21 +63,149 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
 
         <!-- General Settings Tab -->
         <div id="general" class="emailit-tab-pane <?php echo $current_tab === 'general' ? 'active' : ''; ?>">
-            <h2><?php _e('API Configuration', 'emailit-integration'); ?></h2>
+            <!-- Health Score Dashboard -->
+            <div class="emailit-health-score-dashboard">
+                <div class="health-score-header">
+                    <h2><?php _e('System Health', 'emailit-integration'); ?></h2>
+                    <div class="health-score-badge">
+                        <span class="score" id="health-score">-</span>
+                        <span class="max">/100</span>
+                    </div>
+                </div>
+                
+                <div class="health-metrics-grid">
+                    <div class="metric-card api-status">
+                        <div class="metric-icon">🌐</div>
+                        <div class="metric-content">
+                            <h3><?php _e('API Connection', 'emailit-integration'); ?></h3>
+                            <div class="metric-status" id="api-status">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                            <div class="metric-detail" id="api-detail">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card queue-status">
+                        <div class="metric-icon">⚡</div>
+                        <div class="metric-content">
+                            <h3><?php _e('Queue Processing', 'emailit-integration'); ?></h3>
+                            <div class="metric-status" id="queue-status">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                            <div class="metric-detail" id="queue-detail">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card error-rate">
+                        <div class="metric-icon">🛡️</div>
+                        <div class="metric-content">
+                            <h3><?php _e('Error Rate', 'emailit-integration'); ?></h3>
+                            <div class="metric-status" id="error-status">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                            <div class="metric-detail" id="error-detail">-</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card webhook-status">
+                        <div class="metric-icon">🔗</div>
+                        <div class="metric-content">
+                            <h3><?php _e('Webhook Status', 'emailit-integration'); ?></h3>
+                            <div class="metric-status" id="webhook-status">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                            <div class="metric-detail" id="webhook-detail">-</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="health-recommendations">
+                    <h3><?php _e('Recommendations', 'emailit-integration'); ?></h3>
+                    <ul id="health-recommendations">
+                        <li><?php _e('Loading recommendations...', 'emailit-integration'); ?></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- API Configuration -->
+            <h2>
+                <?php _e('API Configuration', 'emailit-integration'); ?>
+                <span class="emailit-help-tooltip">
+                    <span class="help-icon">?</span>
+                    <span class="tooltip-content">
+                        <?php _e('Configure your Emailit API credentials. This is required for the plugin to send emails through Emailit\'s service.', 'emailit-integration'); ?>
+                    </span>
+                </span>
+            </h2>
             <table class="form-table emailit-form-table" role="presentation">
                 <tbody>
                     <?php do_settings_fields('emailit-settings', 'emailit_api_section'); ?>
                 </tbody>
             </table>
 
-            <h2><?php _e('Email Settings', 'emailit-integration'); ?></h2>
+            <!-- Email Settings -->
+            <h2>
+                <?php _e('Email Settings', 'emailit-integration'); ?>
+                <span class="emailit-help-tooltip">
+                    <span class="help-icon">?</span>
+                    <span class="tooltip-content">
+                        <?php _e('Configure how emails are sent and handled. These settings control the default behavior for all emails sent through WordPress.', 'emailit-integration'); ?>
+                    </span>
+                </span>
+            </h2>
             <table class="form-table emailit-form-table" role="presentation">
                 <tbody>
                     <?php do_settings_fields('emailit-settings', 'emailit_email_section'); ?>
                 </tbody>
             </table>
 
-            <h2><?php _e('Logging Settings', 'emailit-integration'); ?></h2>
+            <!-- Test Email Functionality -->
+            <div class="emailit-test-section">
+                <h2><?php _e('Test Your Configuration', 'emailit-integration'); ?></h2>
+                <p class="description"><?php _e('Send a test email to verify your Emailit integration is working correctly.', 'emailit-integration'); ?></p>
+                
+                <div class="emailit-test-email">
+                    <table class="form-table">
+                        <tbody>
+                            <tr>
+                                <th scope="row">
+                                    <label for="emailit_test_email"><?php _e('Test Email Address', 'emailit-integration'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="email" id="emailit_test_email" class="regular-text"
+                                           value="<?php echo esc_attr(get_bloginfo('admin_email')); ?>" />
+                                    <p class="description">
+                                        <?php _e('Email address to send the test email to.', 'emailit-integration'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p>
+                        <button type="button" id="emailit-test-email" class="button button-primary">
+                            <?php _e('Send Test Email', 'emailit-integration'); ?>
+                        </button>
+                        <button type="button" id="emailit-wordpress-test" class="button button-secondary">
+                            <?php _e('Send WordPress Test', 'emailit-integration'); ?>
+                        </button>
+                    </p>
+
+                    <div id="emailit-test-result" class="emailit-test-result" style="display: none;"></div>
+                    <div id="emailit-wordpress-test-result" class="emailit-test-result" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Logging Settings -->
+            <h2>
+                <?php _e('Logging Settings', 'emailit-integration'); ?>
+                <span class="emailit-help-tooltip">
+                    <span class="help-icon">?</span>
+                    <span class="tooltip-content">
+                        <?php _e('Configure email logging and debugging. Enable logging to track email delivery status and troubleshoot issues.', 'emailit-integration'); ?>
+                    </span>
+                </span>
+            </h2>
             <table class="form-table emailit-form-table" role="presentation">
                 <tbody>
                     <?php do_settings_fields('emailit-settings', 'emailit_logging_section'); ?>
@@ -81,6 +213,83 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             </table>
 
             <?php submit_button(); ?>
+        </div>
+
+        <!-- Logs & Statistics Tab -->
+        <div id="logs" class="emailit-tab-pane <?php echo $current_tab === 'logs' ? 'active' : ''; ?>">
+            <h2><?php _e('Email Logs & Statistics', 'emailit-integration'); ?></h2>
+            
+            <!-- Quick Stats -->
+            <div class="emailit-quick-stats">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3><?php _e('Today\'s Emails', 'emailit-integration'); ?></h3>
+                        <div class="stat-value" id="today-emails">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php _e('Success Rate', 'emailit-integration'); ?></h3>
+                        <div class="stat-value" id="success-rate">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php _e('Failed Emails', 'emailit-integration'); ?></h3>
+                        <div class="stat-value" id="failed-emails">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php _e('Queue Status', 'emailit-integration'); ?></h3>
+                        <div class="stat-value" id="queue-count">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Logs -->
+            <div class="emailit-logs-section">
+                <h3><?php _e('Recent Email Activity', 'emailit-integration'); ?></h3>
+                <p class="description"><?php _e('View and manage your recent email activity. For detailed logs, visit the dedicated Emailit Log page.', 'emailit-integration'); ?></p>
+                
+                <div class="emailit-logs-preview">
+                    <div class="logs-loading"><?php _e('Loading recent emails...', 'emailit-integration'); ?></div>
+                    <div id="recent-logs-content" style="display: none;">
+                        <!-- Content will be loaded via AJAX -->
+                    </div>
+                </div>
+                
+                <p>
+                    <a href="<?php echo admin_url('tools.php?page=emailit-logs'); ?>" class="button button-secondary">
+                        <?php _e('View All Email Logs', 'emailit-integration'); ?>
+                    </a>
+                </p>
+            </div>
+
+            <!-- Webhook Activity -->
+            <div class="emailit-webhook-section">
+                <h3><?php _e('Webhook Activity', 'emailit-integration'); ?></h3>
+                <p class="description"><?php _e('Monitor webhook activity and status updates from Emailit.', 'emailit-integration'); ?></p>
+                
+                <div class="webhook-status-overview">
+                    <div class="webhook-status-cards">
+                        <div class="webhook-card">
+                            <h4><?php _e('Webhook Status', 'emailit-integration'); ?></h4>
+                            <div class="webhook-indicator" id="webhook-status">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                        </div>
+                        <div class="webhook-card">
+                            <h4><?php _e('Recent Webhooks', 'emailit-integration'); ?></h4>
+                            <div class="webhook-count" id="webhook-count">-</div>
+                        </div>
+                        <div class="webhook-card">
+                            <h4><?php _e('Last Webhook', 'emailit-integration'); ?></h4>
+                            <div class="webhook-time" id="last-webhook">-</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <p>
+                    <a href="<?php echo admin_url('tools.php?page=emailit-webhook-logs'); ?>" class="button button-secondary">
+                        <?php _e('View Webhook Logs', 'emailit-integration'); ?>
+                    </a>
+                </p>
+            </div>
         </div>
 
         <!-- Performance & Queue Settings Tab -->
@@ -236,12 +445,244 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
 
         <!-- Advanced Settings Tab -->
         <div id="advanced" class="emailit-tab-pane <?php echo $current_tab === 'advanced' ? 'active' : ''; ?>">
-            <h2><?php _e('Advanced Settings', 'emailit-integration'); ?></h2>
-            <table class="form-table emailit-form-table" role="presentation">
-                <tbody>
-                    <?php do_settings_fields('emailit-settings', 'emailit_advanced_section'); ?>
-                </tbody>
-            </table>
+            <div class="emailit-advanced-intro">
+                <h2><?php _e('Advanced Settings', 'emailit-integration'); ?></h2>
+                <p class="description"><?php _e('Advanced configuration options for power users. These settings are optional and can be left at their defaults for most users.', 'emailit-integration'); ?></p>
+                
+                <div class="emailit-mode-notice basic-user-mode">
+                    <div class="notice notice-info">
+                        <p>
+                            <span class="dashicons dashicons-info"></span>
+                            <?php _e('Enable Power User Mode in the header to access advanced features and detailed configuration options.', 'emailit-integration'); ?>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance & Queue Settings -->
+            <div class="emailit-advanced-section collapsible power-user-only">
+                <div class="section-header">
+                    <h3>
+                        <?php _e('Performance & Queue Settings', 'emailit-integration'); ?>
+                        <span class="emailit-help-tooltip">
+                            <span class="help-icon">?</span>
+                            <span class="tooltip-content">
+                                <?php _e('Configure asynchronous email processing to improve site performance. Enable queueing to send emails in the background without blocking page loads.', 'emailit-integration'); ?>
+                            </span>
+                        </span>
+                    </h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content">
+                    <p class="description"><?php _e('Configure asynchronous email processing for improved site performance.', 'emailit-integration'); ?></p>
+                
+                <table class="form-table emailit-form-table" role="presentation">
+                    <tbody>
+                        <?php do_settings_fields('emailit-settings', 'emailit_performance_section'); ?>
+                    </tbody>
+                </table>
+
+                <div class="emailit-queue-status">
+                    <h4><?php _e('Queue Status', 'emailit-integration'); ?></h4>
+                    <div id="queue-status-info">
+                        <div class="queue-stats">
+                            <span class="queue-stat">
+                                <strong><?php _e('Pending:', 'emailit-integration'); ?></strong>
+                                <span id="queue-pending">-</span>
+                            </span>
+                            <span class="queue-stat">
+                                <strong><?php _e('Processing:', 'emailit-integration'); ?></strong>
+                                <span id="queue-processing">-</span>
+                            </span>
+                            <span class="queue-stat">
+                                <strong><?php _e('Failed:', 'emailit-integration'); ?></strong>
+                                <span id="queue-failed">-</span>
+                            </span>
+                        </div>
+                        <p>
+                            <button type="button" id="refresh-queue-stats" class="button button-secondary">
+                                <?php _e('Refresh Stats', 'emailit-integration'); ?>
+                            </button>
+                            <button type="button" id="process-queue-now" class="button button-secondary">
+                                <?php _e('Process Queue Now', 'emailit-integration'); ?>
+                            </button>
+                        </p>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <!-- Webhook Configuration -->
+            <div class="emailit-advanced-section collapsible power-user-only">
+                <div class="section-header">
+                    <h3>
+                        <?php _e('Webhook Configuration', 'emailit-integration'); ?>
+                        <span class="emailit-help-tooltip">
+                            <span class="help-icon">?</span>
+                            <span class="tooltip-content">
+                                <?php _e('Webhooks allow Emailit to send real-time status updates about your emails (delivered, bounced, opened, etc.) directly to your WordPress site.', 'emailit-integration'); ?>
+                            </span>
+                        </span>
+                    </h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content">
+                    <p class="description"><?php _e('Configure webhooks to receive real-time email status updates from Emailit.', 'emailit-integration'); ?></p>
+
+                <table class="form-table emailit-form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row">
+                                <label><?php _e('Webhook URL', 'emailit-integration'); ?></label>
+                            </th>
+                            <td>
+                                <code id="webhook-url"><?php echo esc_url(rest_url('emailit/v1/webhook')); ?></code>
+                                <button type="button" class="button button-secondary" onclick="copyToClipboard('webhook-url')">
+                                    <?php _e('Copy', 'emailit-integration'); ?>
+                                </button>
+                                <p class="description">
+                                    <?php _e('Use this URL in your Emailit dashboard to configure webhooks.', 'emailit-integration'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <?php do_settings_fields('emailit-settings', 'emailit_webhook_section'); ?>
+                    </tbody>
+                </table>
+
+                <div class="emailit-webhook-test">
+                    <h4><?php _e('Test Webhook', 'emailit-integration'); ?></h4>
+                    <p><?php _e('Test your webhook endpoint to ensure it\'s working correctly.', 'emailit-integration'); ?></p>
+                    <button type="button" id="test-webhook" class="button button-secondary">
+                        <?php _e('Test Webhook', 'emailit-integration'); ?>
+                    </button>
+                    <div id="webhook-test-result" class="emailit-test-result" style="display: none;"></div>
+                </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <div class="emailit-advanced-section collapsible power-user-only">
+                <div class="section-header">
+                    <h3>
+                        <?php _e('Advanced Configuration', 'emailit-integration'); ?>
+                        <span class="emailit-help-tooltip">
+                            <span class="help-icon">?</span>
+                            <span class="tooltip-content">
+                                <?php _e('Advanced settings for experienced users. These options control low-level behavior and should only be changed if you understand their impact.', 'emailit-integration'); ?>
+                            </span>
+                        </span>
+                    </h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content">
+                    <p class="description"><?php _e('Advanced configuration options for experienced users.', 'emailit-integration'); ?></p>
+                
+                <table class="form-table emailit-form-table" role="presentation">
+                    <tbody>
+                        <?php do_settings_fields('emailit-settings', 'emailit_advanced_section'); ?>
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            <!-- Performance Status -->
+            <div class="emailit-advanced-section collapsible power-user-only">
+                <div class="section-header">
+                    <h3>
+                        <?php _e('Performance Status', 'emailit-integration'); ?>
+                        <span class="emailit-help-tooltip">
+                            <span class="help-icon">?</span>
+                            <span class="tooltip-content">
+                                <?php _e('Monitor and optimize database performance. These tools help maintain optimal plugin performance over time.', 'emailit-integration'); ?>
+                            </span>
+                        </span>
+                    </h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content">
+                    <p class="description"><?php _e('Database optimization and performance monitoring tools.', 'emailit-integration'); ?></p>
+                
+                <div class="emailit-performance-status">
+                    <div class="emailit-status-grid">
+                        <div class="emailit-status-item">
+                            <span class="status-icon">✅</span>
+                            <span class="status-text"><?php _e('Database optimized', 'emailit-integration'); ?></span>
+                        </div>
+                        <div class="emailit-status-item">
+                            <span class="status-icon">✅</span>
+                            <span class="status-text"><?php _e('Query caching enabled', 'emailit-integration'); ?></span>
+                        </div>
+                        <div class="emailit-status-item">
+                            <span class="status-icon">✅</span>
+                            <span class="status-text"><?php _e('Indexes up to date', 'emailit-integration'); ?></span>
+                        </div>
+                    </div>
+                    
+                    <div class="emailit-maintenance-tools">
+                        <h4><?php _e('Quick Maintenance', 'emailit-integration'); ?></h4>
+                        <p>
+                            <button type="button" id="clean-old-logs" class="button button-secondary">
+                                <?php _e('Clean Old Logs', 'emailit-integration'); ?>
+                            </button>
+                            <button type="button" id="optimize-database" class="button button-secondary">
+                                <?php _e('Optimize Database', 'emailit-integration'); ?>
+                            </button>
+                            <button type="button" id="clear-cache" class="button button-secondary">
+                                <?php _e('Clear Cache', 'emailit-integration'); ?>
+                            </button>
+                        </p>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <!-- Health Monitor -->
+            <div class="emailit-advanced-section collapsible power-user-only">
+                <div class="section-header">
+                    <h3>
+                        <?php _e('Health Monitoring', 'emailit-integration'); ?>
+                        <span class="emailit-help-tooltip">
+                            <span class="help-icon">?</span>
+                            <span class="tooltip-content">
+                                <?php _e('Monitor system health and performance. Get alerts about issues and track overall plugin performance over time.', 'emailit-integration'); ?>
+                            </span>
+                        </span>
+                    </h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content">
+                    <p class="description"><?php _e('System health monitoring and diagnostics.', 'emailit-integration'); ?></p>
+                
+                <div class="emailit-health-overview">
+                    <div class="health-status-cards">
+                        <div class="health-card">
+                            <h4><?php _e('System Health', 'emailit-integration'); ?></h4>
+                            <div class="status-indicator" id="system-health">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                        </div>
+                        <div class="health-card">
+                            <h4><?php _e('API Connectivity', 'emailit-integration'); ?></h4>
+                            <div class="status-indicator" id="api-connectivity">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                        </div>
+                        <div class="health-card">
+                            <h4><?php _e('Database Health', 'emailit-integration'); ?></h4>
+                            <div class="status-indicator" id="database-health">
+                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <p>
+                    <a href="<?php echo admin_url('tools.php?page=emailit-health-monitor'); ?>" class="button button-secondary">
+                        <?php _e('View Detailed Health Monitor', 'emailit-integration'); ?>
+                    </a>
+                </p>
+                </div>
+            </div>
 
             <?php submit_button(); ?>
         </div>
@@ -356,6 +797,31 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 </div>
 
                 <?php submit_button(); ?>
+
+                <!-- Webhook Logs Section -->
+                <div class="emailit-webhook-logs-section" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #ddd;">
+                    <h2><?php _e('Webhook Activity & Logs', 'emailit-integration'); ?></h2>
+                    <p><?php _e('Monitor webhook activity and view recent webhook events.', 'emailit-integration'); ?></p>
+                    
+                    <?php
+                    // Load webhook logs data for this tab
+                    $webhook_monitor = emailit_get_component('webhook_monitor');
+                    if ($webhook_monitor) {
+                        $webhook_health = $webhook_monitor->get_webhook_health_status();
+                        $webhook_stats = $webhook_monitor->get_webhook_statistics(7);
+                        $recent_webhooks = $webhook_monitor->get_recent_webhook_activity(20); // Show fewer in settings
+                        $webhook_alerts = $webhook_monitor->get_webhook_alerts();
+                        
+                        // Set embedded flag for webhook logs view
+                        $is_embedded = true;
+                        
+                        // Include the webhook logs view
+                        include EMAILIT_PLUGIN_DIR . 'admin/views/webhook-logs.php';
+                    } else {
+                        echo '<p>' . __('Webhook monitoring is not available.', 'emailit-integration') . '</p>';
+                    }
+                    ?>
+                </div>
         </div>
 
         <!-- FluentCRM Integration Tab -->
@@ -762,7 +1228,7 @@ jQuery(document).ready(function($) {
         })
         .always(function() {
             $button.prop('disabled', false).text('<?php _e('Test Webhook', 'emailit-integration'); ?>');
-            $result.show();
+            $result.show().addClass('show');
         });
     });
 
@@ -918,6 +1384,207 @@ jQuery(document).ready(function($) {
             $button.prop('disabled', false).text('<?php _e('Clear Cache', 'emailit-integration'); ?>');
         });
     });
+
+    // Load status data for the new interface
+    function loadStatusData() {
+        loadAPIStatus();
+        loadRecentActivity();
+        loadQueueStatus();
+        loadQuickStats();
+        loadWebhookStatus();
+    }
+
+    function loadAPIStatus() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_api_status',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                var status = response.data.status;
+                var $indicator = $('#api-status .status-text');
+                $indicator.removeClass('success warning error').addClass(status);
+                $indicator.text(response.data.message);
+            }
+        });
+    }
+
+    function loadRecentActivity() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_recent_activity',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                $('#recent-activity').text(response.data.message);
+            }
+        });
+    }
+
+    function loadQueueStatus() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_queue_status',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                $('#queue-status').text(response.data.message);
+            }
+        });
+    }
+
+    function loadQuickStats() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_quick_stats',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                $('#today-emails').text(response.data.today_emails);
+                $('#success-rate').text(response.data.success_rate + '%');
+                $('#failed-emails').text(response.data.failed_emails);
+                $('#queue-count').text(response.data.queue_count);
+            }
+        });
+    }
+
+    function loadWebhookStatus() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_webhook_status',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                $('#webhook-status .status-text').text(response.data.status);
+                $('#webhook-count').text(response.data.count);
+                $('#last-webhook').text(response.data.last_webhook);
+            }
+        });
+    }
+
+    // Load status data on page load
+    loadStatusData();
+    loadHealthScore();
+
+    // Health Score Dashboard
+    function loadHealthScore() {
+        $.post(ajaxurl, {
+            action: 'emailit_get_health_score',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                updateHealthScore(response.data);
+            }
+        })
+        .fail(function() {
+            // Show error state
+            $('#health-score').text('?');
+            $('.metric-status').removeClass('excellent good warning error').addClass('error');
+            $('.status-text').text('<?php _e('Error', 'emailit-integration'); ?>');
+        });
+    }
+
+    function updateHealthScore(data) {
+        // Update overall health score
+        $('#health-score').text(data.overall_score);
+        
+        // Update individual metrics
+        updateMetricCard('#api-status', '#api-detail', data.api_status);
+        updateMetricCard('#queue-status', '#queue-detail', data.queue_status);
+        updateMetricCard('#error-status', '#error-detail', data.error_rate);
+        updateMetricCard('#webhook-status', '#webhook-detail', data.webhook_status);
+        
+        // Update recommendations
+        updateRecommendations(data.recommendations);
+    }
+
+    function updateMetricCard(statusSelector, detailSelector, data) {
+        var $status = $(statusSelector);
+        var $detail = $(detailSelector);
+        
+        // Update status text and class
+        $status.find('.status-text').text(data.status_text);
+        $status.removeClass('excellent good warning error').addClass(data.status);
+        
+        // Update detail text
+        $detail.text(data.detail);
+    }
+
+    function updateRecommendations(recommendations) {
+        var $list = $('#health-recommendations');
+        $list.empty();
+        
+        if (recommendations && recommendations.length > 0) {
+            recommendations.forEach(function(rec) {
+                $list.append('<li>' + rec + '</li>');
+            });
+        } else {
+            $list.append('<li><?php _e('No recommendations available', 'emailit-integration'); ?></li>');
+        }
+    }
+
+    // Auto-refresh health score every 30 seconds
+    setInterval(loadHealthScore, 30000);
+
+    // Power User Mode Toggle
+    $('#power-user-mode').on('change', function() {
+        var isPowerUser = $(this).is(':checked');
+        
+        $.post(ajaxurl, {
+            action: 'emailit_toggle_power_user_mode',
+            nonce: '<?php echo wp_create_nonce('emailit_admin_nonce'); ?>'
+        })
+        .done(function(response) {
+            if (response.success) {
+                // Toggle the body class to show/hide power user features
+                if (isPowerUser) {
+                    $('body').removeClass('basic-user-mode').addClass('power-user-mode');
+                } else {
+                    $('body').removeClass('power-user-mode').addClass('basic-user-mode');
+                }
+                
+                // Show success message
+                if (response.data.message) {
+                    alert(response.data.message);
+                }
+            }
+        })
+        .fail(function() {
+            // Revert the toggle if the request failed
+            $('#power-user-mode').prop('checked', !isPowerUser);
+        });
+    });
+
+    // Initialize power user mode on page load
+    var isPowerUser = $('#power-user-mode').is(':checked');
+    if (isPowerUser) {
+        $('body').addClass('power-user-mode');
+    } else {
+        $('body').addClass('basic-user-mode');
+    }
+
+    // Collapsible sections functionality
+    $('.emailit-advanced-section.collapsible .section-header').on('click', function() {
+        var $section = $(this).closest('.emailit-advanced-section');
+        var $content = $section.find('.section-content');
+        var $icon = $(this).find('.toggle-icon');
+        
+        if ($section.hasClass('collapsed')) {
+            $section.removeClass('collapsed');
+            $content.slideDown(300);
+            $icon.text('▼');
+        } else {
+            $section.addClass('collapsed');
+            $content.slideUp(300);
+            $icon.text('▶');
+        }
+    });
+
+    // Initialize collapsible sections - all collapsed by default
+    $('.emailit-advanced-section.collapsible').addClass('collapsed');
+    $('.emailit-advanced-section.collapsible .section-content').hide();
+    $('.emailit-advanced-section.collapsible .toggle-icon').text('▶');
 });
 </script>
 
@@ -1206,5 +1873,535 @@ jQuery(document).ready(function($) {
 .emailit-bounce-stats-disabled .notice {
     margin: 0;
     padding: 12px;
+}
+
+/* New Simplified Interface Styles */
+.emailit-status-overview {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.emailit-status-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.status-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: box-shadow 0.3s ease;
+}
+
+.status-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-card .status-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.status-card .status-content h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-card .status-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-indicator.success {
+    color: #46b450;
+}
+
+.status-indicator.warning {
+    color: #f56e28;
+}
+
+.status-indicator.error {
+    color: #d63638;
+}
+
+.emailit-test-section {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.emailit-quick-stats {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+}
+
+.stat-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #0073aa;
+}
+
+.emailit-logs-section,
+.emailit-webhook-section {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.webhook-status-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.webhook-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 15px;
+    text-align: center;
+}
+
+.webhook-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.webhook-indicator,
+.webhook-count,
+.webhook-time {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.emailit-advanced-section {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.emailit-advanced-section h3 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 2px solid #0073aa;
+    padding-bottom: 10px;
+}
+
+.emailit-advanced-section .description {
+    color: #666;
+    font-style: italic;
+    margin-bottom: 20px;
+}
+
+.health-status-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.health-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 15px;
+    text-align: center;
+}
+
+.health-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.health-card .status-indicator {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Power User Mode Toggle */
+.emailit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.emailit-power-user-toggle {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.emailit-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+
+.emailit-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #0073aa;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+.emailit-toggle-label {
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.power-user-text {
+    font-weight: 600;
+    color: #333;
+}
+
+.power-user-description {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Progressive Disclosure */
+.emailit-advanced-section {
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.emailit-advanced-section.collapsible .section-header {
+    background: #f9f9f9;
+    padding: 15px 20px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    transition: background-color 0.3s ease;
+}
+
+.emailit-advanced-section.collapsible .section-header:hover {
+    background: #f0f0f0;
+}
+
+.emailit-advanced-section.collapsible .section-header h3 {
+    margin: 0;
+    color: #333;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.emailit-advanced-section.collapsible .section-header .toggle-icon {
+    font-size: 16px;
+    color: #666;
+    transition: transform 0.3s ease;
+}
+
+.emailit-advanced-section.collapsible.collapsed .section-header .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.emailit-advanced-section.collapsible .section-content {
+    padding: 20px;
+    background: #fff;
+}
+
+.emailit-advanced-section.collapsible.collapsed .section-content {
+    display: none;
+}
+
+/* Power User Mode Styles */
+.power-user-only {
+    display: none;
+}
+
+.power-user-mode .power-user-only {
+    display: block;
+}
+
+.power-user-mode .emailit-advanced-section.collapsible {
+    display: block;
+}
+
+.basic-user-mode .emailit-advanced-section.collapsible {
+    display: none;
+}
+
+/* Contextual Help */
+.emailit-help-tooltip {
+    position: relative;
+    display: inline-block;
+    margin-left: 5px;
+    cursor: help;
+}
+
+.emailit-help-tooltip .help-icon {
+    color: #0073aa;
+    font-size: 16px;
+}
+
+.emailit-help-tooltip .tooltip-content {
+    visibility: hidden;
+    width: 300px;
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    border-radius: 6px;
+    padding: 10px;
+    position: absolute;
+    z-index: 1000;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -150px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.emailit-help-tooltip .tooltip-content::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+.emailit-help-tooltip:hover .tooltip-content {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Health Score Dashboard */
+.emailit-health-score-dashboard {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 25px;
+    margin: 20px 0;
+    color: white;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+}
+
+.health-score-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.health-score-header h2 {
+    margin: 0;
+    color: white;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.health-score-badge {
+    background: rgba(255,255,255,0.2);
+    border-radius: 50px;
+    padding: 15px 25px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    backdrop-filter: blur(10px);
+}
+
+.health-score-badge .score {
+    font-size: 36px;
+    font-weight: bold;
+    color: white;
+}
+
+.health-score-badge .max {
+    font-size: 18px;
+    opacity: 0.8;
+    color: white;
+}
+
+.health-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+.metric-card {
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    backdrop-filter: blur(10px);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.metric-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.metric-content h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: white;
+}
+
+.metric-status {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: white;
+}
+
+.metric-status.excellent { color: #4ade80; }
+.metric-status.good { color: #60a5fa; }
+.metric-status.warning { color: #fbbf24; }
+.metric-status.error { color: #f87171; }
+
+.metric-detail {
+    font-size: 12px;
+    opacity: 0.8;
+    color: white;
+}
+
+.health-recommendations {
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.health-recommendations h3 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: white;
+}
+
+.health-recommendations ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style: none;
+}
+
+.health-recommendations li {
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: white;
+    opacity: 0.9;
+}
+
+.health-recommendations li:before {
+    content: "•";
+    color: #4ade80;
+    font-weight: bold;
+    display: inline-block;
+    width: 1em;
+    margin-left: -1em;
 }
 </style>

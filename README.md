@@ -5,18 +5,18 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.6.3-green.svg)
+![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)
 
 ## 📁 Repository Contents
 
 ### 🎯 Main Plugin: [emailit-integration/](./emailit-integration/)
-The complete WordPress plugin with enterprise-grade email functionality:
+The complete WordPress plugin with enterprise-grade email functionality and improved UX design:
 - **Complete wp_mail() replacement** with Emailit API integration
 - **FluentCRM integration** for advanced bounce handling and CRM synchronization
 - **Real-time webhook tracking** with optional webhook listening
 - **Queue system** for bulk email processing
 - **Advanced error handling** with circuit breaker and intelligent retry mechanisms
-- **Professional admin interface** with modern UI design
+- **🎨 Improved Admin Interface** with Power User Mode and progressive disclosure
 - **Enterprise security features** including encrypted API key storage
 
 **👉 [View Complete Plugin Documentation](./emailit-integration/README.md)**
@@ -35,7 +35,7 @@ The Emailit Integration plugin transforms WordPress email delivery with:
 - **📊 Real-time Tracking**: Webhook-based email status updates (delivered, bounced, etc.)
 - **⚡ Queue System**: Background processing for bulk emails
 - **🛡️ Advanced Error Handling**: Circuit breaker, intelligent retry, and error analytics
-- **🎨 Modern Admin Interface**: Professional dashboard with enhanced UX
+- **🎨 Improved Admin Interface**: Power User Mode with customizable complexity
 - **🔒 Enterprise Security**: Encrypted API keys and comprehensive input validation
 - **🛡️ Fallback System**: Automatic failover to wp_mail() if API fails
 
@@ -78,52 +78,103 @@ For detailed installation instructions, configuration options, troubleshooting, 
 
 ## 📄 **License**
 
-## 🆕 Latest Features (Version 2.6.3)
-
-### 🐛 **Health Monitor & Cleanup Fixes**
-- **Fixed Delivery Rate Calculation**: Corrected status value queries to use 'sent' and 'delivered' instead of non-existent 'success' status
-- **Added Time Period Selection**: Implemented 1 hour, 24 hours, and 7 days time period selection for metrics
-- **Real-time Metrics Updates**: Added AJAX-powered refresh functionality for dynamic metric updates
-- **Fixed Table Existence Checks**: Added proper table existence checks before attempting cleanup operations
-- **Prevented Database Errors**: Eliminated "Table doesn't exist" errors when running cleanup functions
-- **Accurate Delivery Rates**: Fixed calculation to show actual email delivery percentages
-
-## 🆕 Previous Features (Version 2.6.2)
-
-### 🐛 **Health Monitor Bug Fix**
-- **Fixed Queue Table Column Error**: Resolved "Unknown column 'updated_at'" error in health monitor queue processing check
-- **Enhanced Queue Health Check**: Added proper table existence validation and error handling for queue health monitoring
-- **Improved Error Handling**: Added try-catch blocks and graceful fallbacks for database query failures in health checks
-
-## 🆕 Previous Features (Version 2.6.1)
-
-### 🐛 **Critical Bug Fixes & Stability Improvements**
-- **Fixed Health Monitor Critical Errors**: Resolved E_ERROR in health monitor page
-- **Fixed Database Migration Errors**: Resolved duplicate key and missing table errors
-- **Fixed Metrics Collection Errors**: Removed references to non-existent database columns
-- **Fixed Health Check Email Spam**: Prevented real email sending during health checks
-- **Fixed Webhook Health Check Loops**: Prevented HTTP requests to self
-- **Enhanced Error Handling**: Added comprehensive try-catch blocks and table existence checks
-- **Improved System Stability**: Better initialization and graceful degradation
-
-### 🛡️ **Advanced Error Handling System** (Version 2.6.0)
-- **Circuit Breaker Protection**: Automatic failure detection and recovery mechanisms
-- **Intelligent Retry System**: Exponential backoff with jitter for failed operations
-- **Error Analytics**: Pattern detection, trend analysis, and anomaly detection
-- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack alerts
-- **Error Recovery**: Automated recovery strategies for different error types
-- **Debugging Tools**: Enhanced troubleshooting and error insights
-
-### 📊 **Production-Ready Reliability**
-- **Cascading Failure Prevention**: Prevents system-wide failures during outages
-- **Self-Healing Mechanisms**: Automatic recovery from transient errors
-- **Comprehensive Monitoring**: Real-time error statistics and health metrics
-- **Data Retention**: Configurable error data cleanup and archiving
-- **Performance Optimization**: Efficient error tracking and storage
+This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) file for details.
+## 🆕 **Version 3.0.0 - Major UX Overhaul**
+
+### 🎨 **User Interface Improvements**
+
+#### **Power User Mode System**
+- **🎛️ Toggle Interface Complexity**: Users can choose between simple and advanced interfaces
+- **👤 User-Specific Preferences**: Individual power user mode settings per user
+- **⚡ Real-Time Switching**: Instant interface changes without page reload
+- **🎯 Adaptive Experience**: Interface adapts to user skill level and preferences
+
+#### **Progressive Disclosure Design**
+- **📁 Collapsible Advanced Sections**: Advanced features organized in expandable sections
+- **🔽 Smart Defaults**: Sections start collapsed to reduce visual clutter
+- **🎭 Smooth Animations**: 300ms slide animations for better user experience
+- **👁️ Visual Indicators**: Clear expand/collapse icons and hover effects
+
+#### **Simplified Tab Structure**
+- **📊 Consolidated Navigation**: Reduced from 6 tabs to 3 clear sections
+  - **General**: Essential settings, API configuration, testing
+  - **Logs & Statistics**: Email logs, webhook activity, quick stats
+  - **Advanced**: Power user features (collapsible sections)
+- **🎯 Logical Flow**: Intuitive progression from basic to advanced features
+- **📱 Responsive Design**: Optimized for all screen sizes
+
+#### **Health Score Dashboard**
+- **🎯 Overall Health Score**: Single 0-100 score showing system health at a glance
+- **📊 Real-Time Metrics**: Live API status, queue processing, error rates, webhook health
+- **🎨 Visual Design**: Gradient background with glassmorphism effects
+- **💡 Smart Recommendations**: Context-aware suggestions for system optimization
+- **🔄 Auto-Updating**: Refreshes every 30 seconds with smooth AJAX updates
+- **📈 Performance Monitoring**: Track system health trends and identify issues early
+
+#### **Contextual Help System**
+- **❓ Smart Tooltips**: Hover help icons with detailed explanations
+- **📖 User-Friendly Language**: Clear, non-technical descriptions
+- **🎯 Strategic Placement**: Help where users need it most
+- **💡 Progressive Learning**: Users can gradually understand advanced features
+
+### 🔧 **Technical Improvements**
+
+#### **Advanced JavaScript Functionality**
+- **⚡ AJAX-Powered Interface**: Real-time updates and interactions
+- **🎛️ Dynamic UI Controls**: Toggle switches, collapsible sections, tooltips
+- **🔄 State Management**: Persistent user preferences and interface state
+- **🛡️ Error Handling**: Graceful fallbacks and user feedback
+
+#### **Enhanced User Experience**
+- **🎨 Modern Visual Design**: Professional styling with consistent theming
+- **📱 Mobile-Responsive**: Optimized for all device sizes
+- **♿ Accessibility**: Proper labels, keyboard navigation, screen reader support
+- **⚡ Performance**: Optimized loading and smooth interactions
+
+#### **Feature Organization**
+- **👥 User Type Optimization**: Different experiences for beginners vs. power users
+- **📚 Learning Progression**: Users can gradually explore advanced features
+- **🎯 Reduced Cognitive Load**: Simplified interface for basic users
+- **⚙️ Full Control**: Complete access to all features for power users
+
+### 🎯 **User Experience Benefits**
+
+#### **For Beginners**
+- **🎯 Simple Interface**: Only essential settings visible by default
+- **📖 Clear Guidance**: Tooltips and help text explain everything
+- **🚀 Easy Setup**: Streamlined configuration process
+- **💡 Progressive Learning**: Can enable advanced features when ready
+
+#### **For Power Users**
+- **⚙️ Full Control**: Access to all advanced configuration options
+- **📁 Organized Sections**: Logical grouping of related features
+- **🔧 Advanced Tools**: Database optimization, health monitoring, detailed logs
+- **📊 Comprehensive Monitoring**: Real-time status and performance metrics
+
+#### **For All Users**
+- **🎨 Professional Design**: Modern, clean interface
+- **⚡ Fast Performance**: Optimized loading and interactions
+- **📱 Universal Access**: Works on all devices and screen sizes
+- **🔄 Consistent Experience**: Predictable behavior and navigation
+
+---
+
+## 📋 **Previous Major Updates**
+
+### Version 2.6.4 - Webhook Logs & UI Improvements
+- **Webhook Logs Integration**: Moved webhook logs to Webhooks tab for better UX
+- **Fixed Webhook Display**: Resolved empty fields and improved data extraction
+- **Test Webhook Improvements**: Clear test identification and visual indicators
+- **UI/UX Enhancements**: Removed redundant stats and improved visual hierarchy
+
+### Version 2.6.0 - Advanced Error Handling System
+- **Circuit Breaker Protection**: Automatic failure detection and recovery
+- **Intelligent Retry System**: Exponential backoff with jitter
+- **Error Analytics**: Pattern detection and trend analysis
+- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack alerts
 
 ---
 

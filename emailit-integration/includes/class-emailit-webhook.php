@@ -70,6 +70,14 @@ class Emailit_Webhook {
      * Handle incoming webhook
      */
     public function handle_webhook($request) {
+        // Check if webhooks are enabled
+        if (!get_option('emailit_enable_webhooks', 1)) {
+            return new WP_REST_Response(array(
+                'message' => 'Webhooks are disabled',
+                'status' => 'disabled'
+            ), 200);
+        }
+
         // Log all incoming webhook requests for debugging
         $body = $request->get_body();
         $headers = $request->get_headers();
@@ -355,15 +363,21 @@ class Emailit_Webhook {
 
         // Validate event type using actual Emailit event types
         $valid_events = array(
-            // Actual Emailit event types
+            // Official Emailit event types from documentation
             'email.delivery.sent',
+            'email.delivery.delivered',
+            'email.delivery.bounced',
+            'email.delivery.complained',
+            'email.delivery.failed',
             'email.delivery.hardfail',
             'email.delivery.softfail',
-            'email.delivery.bounce',
             'email.delivery.error',
             'email.delivery.held',
             'email.delivery.delayed',
-
+            'email.delivery.opened',
+            'email.delivery.clicked',
+            'email.delivery.unsubscribed',
+            
             // Legacy event types for backwards compatibility
             'email.sent',
             'email.delivered',
@@ -371,7 +385,8 @@ class Emailit_Webhook {
             'email.complained',
             'email.failed',
             'email.clicked',
-            'email.opened'
+            'email.opened',
+            'email.unsubscribed'
         );
 
         if (!in_array($event_type, $valid_events)) {
@@ -389,12 +404,16 @@ class Emailit_Webhook {
      * Process webhook data
      */
     private function process_webhook($webhook_data) {
-        // Handle Emailit's actual webhook format
+        // Handle Emailit's official webhook format
+        // According to EmailIt docs: { "event_id": "...", "type": "...", "object": { "id": "..." } }
         $event_type = isset($webhook_data['type']) ? $webhook_data['type'] : $webhook_data['event_type'];
+        $event_id = isset($webhook_data['event_id']) ? $webhook_data['event_id'] : null;
         $email_id = null;
 
         // Extract email ID from Emailit's nested structure
-        if (isset($webhook_data['object']['email']['id'])) {
+        if (isset($webhook_data['object']['id'])) {
+            $email_id = $webhook_data['object']['id'];
+        } elseif (isset($webhook_data['object']['email']['id'])) {
             $email_id = $webhook_data['object']['email']['id'];
         } elseif (isset($webhook_data['email_id'])) {
             $email_id = $webhook_data['email_id'];
@@ -416,26 +435,77 @@ class Emailit_Webhook {
             );
         }
 
-        // Log webhook event
-        $webhook_log_id = $this->logger->log_webhook($webhook_data, $email_id);
+        // Check if this is a test webhook
+        $is_test_webhook = (isset($webhook_data['test']) && $webhook_data['test'] === true) || 
+                          (isset($webhook_data['event_id']) && strpos($webhook_data['event_id'], 'WEBHOOKTEST_') === 0);
+        
+        if ($is_test_webhook) {
+            $this->logger->log('TEST WEBHOOK RECEIVED - This is a test webhook from the admin interface', Emailit_Logger::LEVEL_INFO, array(
+                'event_id' => $event_id,
+                'event_type' => $event_type,
+                'email_id' => $email_id,
+                'test_data' => $webhook_data
+            ));
+        }
+
+        // Log webhook event - format data properly for logging
+        $formatted_webhook_data = array(
+            'request_id' => isset($webhook_data['request_id']) ? $webhook_data['request_id'] : 
+                           (isset($webhook_data['id']) ? $webhook_data['id'] : null),
+            'event_id' => $event_id, // Use the event_id from EmailIt format
+            'event_type' => $event_type,
+            'status' => 'processed', // Webhook was successfully processed
+            'details' => array(
+                // Extract email details from EmailIt's object structure
+                'from_email' => isset($webhook_data['object']['email']['from']) ? $webhook_data['object']['email']['from'] : 
+                               (isset($webhook_data['object']['from']) ? $webhook_data['object']['from'] : 
+                               (isset($webhook_data['from_email']) ? $webhook_data['from_email'] : null)),
+                'to_email' => isset($webhook_data['object']['email']['to']) ? $webhook_data['object']['email']['to'] : 
+                             (isset($webhook_data['object']['to']) ? $webhook_data['object']['to'] : 
+                             (isset($webhook_data['to_email']) ? $webhook_data['to_email'] : null)),
+                'subject' => isset($webhook_data['object']['email']['subject']) ? $webhook_data['object']['email']['subject'] : 
+                            (isset($webhook_data['object']['subject']) ? $webhook_data['object']['subject'] : 
+                            (isset($webhook_data['subject']) ? $webhook_data['subject'] : null)),
+                'timestamp' => isset($webhook_data['timestamp']) ? $webhook_data['timestamp'] : 
+                              (isset($webhook_data['created_at']) ? $webhook_data['created_at'] : 
+                              (isset($webhook_data['object']['created_at']) ? $webhook_data['object']['created_at'] : current_time('mysql'))),
+                'bounce_reason' => isset($webhook_data['object']['bounce_reason']) ? $webhook_data['object']['bounce_reason'] : 
+                                  (isset($webhook_data['bounce_reason']) ? $webhook_data['bounce_reason'] : null),
+                'complaint_reason' => isset($webhook_data['object']['complaint_reason']) ? $webhook_data['object']['complaint_reason'] : 
+                                     (isset($webhook_data['complaint_reason']) ? $webhook_data['complaint_reason'] : null),
+                'failure_reason' => isset($webhook_data['object']['failure_reason']) ? $webhook_data['object']['failure_reason'] : 
+                                   (isset($webhook_data['failure_reason']) ? $webhook_data['failure_reason'] : null),
+                'raw_webhook' => $webhook_data
+            )
+        );
+        $webhook_log_id = $this->logger->log_webhook($formatted_webhook_data, $email_id);
 
         // Map event type to email status using actual Emailit status codes
         $status_mapping = array(
-            // Actual Emailit status codes
+            // Official Emailit status codes from documentation
             'email.delivery.sent' => Emailit_Logger::STATUS_SENT,
+            'email.delivery.delivered' => Emailit_Logger::STATUS_DELIVERED,
+            'email.delivery.bounced' => Emailit_Logger::STATUS_BOUNCED,
+            'email.delivery.complained' => Emailit_Logger::STATUS_COMPLAINED,
+            'email.delivery.failed' => Emailit_Logger::STATUS_FAILED,
             'email.delivery.hardfail' => Emailit_Logger::STATUS_FAILED,
             'email.delivery.softfail' => Emailit_Logger::STATUS_FAILED,
-            'email.delivery.bounce' => Emailit_Logger::STATUS_BOUNCED,
             'email.delivery.error' => Emailit_Logger::STATUS_FAILED,
             'email.delivery.held' => Emailit_Logger::STATUS_HELD,
             'email.delivery.delayed' => Emailit_Logger::STATUS_DELAYED,
+            'email.delivery.opened' => Emailit_Logger::STATUS_OPENED,
+            'email.delivery.clicked' => Emailit_Logger::STATUS_CLICKED,
+            'email.delivery.unsubscribed' => Emailit_Logger::STATUS_UNSUBSCRIBED,
 
             // Legacy/backwards compatibility
             'email.sent' => Emailit_Logger::STATUS_SENT,
             'email.delivered' => Emailit_Logger::STATUS_DELIVERED,
             'email.bounced' => Emailit_Logger::STATUS_BOUNCED,
             'email.complained' => Emailit_Logger::STATUS_COMPLAINED,
-            'email.failed' => Emailit_Logger::STATUS_FAILED
+            'email.failed' => Emailit_Logger::STATUS_FAILED,
+            'email.opened' => Emailit_Logger::STATUS_OPENED,
+            'email.clicked' => Emailit_Logger::STATUS_CLICKED,
+            'email.unsubscribed' => Emailit_Logger::STATUS_UNSUBSCRIBED
         );
 
         // Update email status if it's a status-changing event
@@ -488,8 +558,9 @@ class Emailit_Webhook {
                 }
             }
 
-            // Update email status
-            $updated = $this->logger->update_email_status($email_id, $new_status, $details);
+            // Update email status (convert details array to JSON string)
+            $details_json = !empty($details) ? wp_json_encode($details) : null;
+            $updated = $this->logger->update_email_status($email_id, $new_status, $details_json);
 
             // Debug logging for update result
             if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -656,10 +727,20 @@ class Emailit_Webhook {
      * Test webhook endpoint
      */
     public function test_webhook() {
+        // Create test data in EmailIt's official webhook format
         $test_data = array(
-            'event_type' => 'email.delivered',
-            'email_id' => 'test_' . time(),
-            'timestamp' => current_time('mysql'),
+            'event_id' => 'WEBHOOKTEST_' . time(), // Clearly identifiable test event ID
+            'type' => 'email.delivery.delivered',
+            'object' => array(
+                'id' => 'TEST_EMAIL_' . time(),
+                'email' => array(
+                    'from' => 'test@' . parse_url(get_site_url(), PHP_URL_HOST),
+                    'to' => 'test-recipient@example.com',
+                    'subject' => 'EmailIt Webhook Test - ' . current_time('Y-m-d H:i:s'),
+                    'created_at' => current_time('c')
+                )
+            ),
+            'timestamp' => current_time('c'),
             'test' => true
         );
 
@@ -710,13 +791,20 @@ class Emailit_Webhook {
         $registration_data = array(
             'url' => $webhook_url,
             'events' => array(
-                'email.sent',
-                'email.delivered',
-                'email.bounced',
-                'email.complained',
-                'email.failed',
-                'email.opened',
-                'email.clicked'
+                // Official EmailIt event types from documentation
+                'email.delivery.sent',
+                'email.delivery.delivered',
+                'email.delivery.bounced',
+                'email.delivery.complained',
+                'email.delivery.failed',
+                'email.delivery.hardfail',
+                'email.delivery.softfail',
+                'email.delivery.error',
+                'email.delivery.held',
+                'email.delivery.delayed',
+                'email.delivery.opened',
+                'email.delivery.clicked',
+                'email.delivery.unsubscribed'
             )
         );
 

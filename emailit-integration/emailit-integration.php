@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.6.3
+ * Version: 3.0.0
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.6.3');
+define('EMAILIT_VERSION', '3.0.0');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -53,6 +53,7 @@ class Emailit_Integration {
     private $query_optimizer = null;
     private $fluentcrm_handler = null;
     private $health_monitor = null;
+    private $webhook_monitor = null;
 
     /**
      * Get plugin instance
@@ -226,6 +227,9 @@ class Emailit_Integration {
         
         // Initialize health monitor
         $this->health_monitor = new Emailit_Health_Monitor($this->logger);
+        
+        // Initialize webhook monitoring
+        $this->webhook_monitor = new Emailit_Webhook_Monitor($this->logger);
 
         // Initialize advanced error handling
         $this->init_advanced_error_handling();
@@ -340,10 +344,8 @@ class Emailit_Integration {
         add_action('admin_init', array($this->admin, 'init'));
         add_action('admin_menu', array($this->admin, 'add_menu_pages'));
 
-        // REST API init - only register webhook routes if webhooks are enabled
-        if (get_option('emailit_enable_webhooks', 1)) {
-            add_action('rest_api_init', array($this->webhook, 'register_routes'));
-        }
+        // REST API init - register webhook routes (default enabled)
+        add_action('rest_api_init', array($this->webhook, 'register_routes'));
 
         // Enqueue scripts and styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
@@ -668,6 +670,7 @@ class Emailit_Integration {
             'emailit_enable_queue' => 0,
             'emailit_queue_batch_size' => 10,
             'emailit_queue_max_retries' => 3,
+            'emailit_enable_webhooks' => 1,
             'emailit_webhook_secret' => '',
             // FluentCRM Integration Options
             'emailit_fluentcrm_integration' => 1,

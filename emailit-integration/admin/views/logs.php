@@ -194,6 +194,32 @@ $stats = $logger->get_stats();
                                 echo esc_html($status_display);
                                 ?>
                             </span>
+                            
+                            <?php if (!empty($log['email_id'])): ?>
+                                <div class="webhook-status">
+                                    <?php if (!empty($log['webhook_status'])): ?>
+                                        <span class="webhook-indicator webhook-<?php echo esc_attr($log['webhook_status']); ?>" 
+                                              title="<?php printf(__('Webhook: %s (%s)', 'emailit-integration'), 
+                                                  esc_attr(ucfirst($log['webhook_status'])), 
+                                                  esc_attr($log['event_type'])); ?>">
+                                            <span class="dashicons dashicons-yes-alt"></span>
+                                            <?php echo esc_html(ucfirst($log['webhook_status'])); ?>
+                                        </span>
+                                        <?php if (!empty($log['webhook_processed_at'])): ?>
+                                            <br><small class="webhook-time">
+                                                <?php printf(__('Webhook: %s', 'emailit-integration'), 
+                                                    human_time_diff(strtotime($log['webhook_processed_at']), current_time('timestamp')) . ' ago'); ?>
+                                            </small>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="webhook-indicator webhook-missing" 
+                                              title="<?php _e('No webhook received for this email', 'emailit-integration'); ?>">
+                                            <span class="dashicons dashicons-warning"></span>
+                                            <?php _e('No Webhook', 'emailit-integration'); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td class="column-actions">
                             <div class="emailit-log-actions">
@@ -493,3 +519,52 @@ jQuery(document).ready(function($) {
     <?php endif; ?>
 });
 </script>
+
+<style>
+.webhook-status {
+    margin-top: 5px;
+}
+
+.webhook-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.webhook-indicator .dashicons {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+}
+
+.webhook-processed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.webhook-failed {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.webhook-missing {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.webhook-time {
+    color: #666;
+    font-size: 10px;
+    margin-top: 2px;
+    display: block;
+}
+
+.column-status {
+    min-width: 150px;
+}
+</style>

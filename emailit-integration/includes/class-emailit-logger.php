@@ -32,6 +32,9 @@ class Emailit_Logger {
     const STATUS_COMPLAINED = 'complained';
     const STATUS_HELD = 'held';
     const STATUS_DELAYED = 'delayed';
+    const STATUS_OPENED = 'opened';
+    const STATUS_CLICKED = 'clicked';
+    const STATUS_UNSUBSCRIBED = 'unsubscribed';
 
     /**
      * Database table names
