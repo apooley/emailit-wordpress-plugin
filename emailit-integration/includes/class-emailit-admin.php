@@ -2222,96 +2222,96 @@ class Emailit_Admin {
     <title>' . esc_html__('WordPress Test Email - Emailit Integration', 'emailit-integration') . '</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8f9fa;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; padding: 10px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; padding: 5px 0;">
         <tr>
             <td align="center">
-                <table cellpadding="0" cellspacing="0" border="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 500px; background-color: #ffffff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                     <!-- Header -->
                     <tr>
-                        <td style="background: #d63384; padding: 24px 20px; text-align: center; border-radius: 8px 8px 0 0;">
-                            <h1 style="color: #ffffff; margin: 0 0 8px 0; font-size: 24px; font-weight: 600;">🔧 ' . esc_html__('WordPress wp_mail() Test', 'emailit-integration') . '</h1>
-                            <p style="color: #ffeef1; margin: 0; font-size: 14px;">' . esc_html__('Testing email interception and processing', 'emailit-integration') . '</p>
+                        <td style="background: #d63384; padding: 12px 16px; text-align: center; border-radius: 4px 4px 0 0;">
+                            <h1 style="color: #ffffff; margin: 0 0 4px 0; font-size: 18px; font-weight: 600;">🔧 ' . esc_html__('WordPress wp_mail() Test', 'emailit-integration') . '</h1>
+                            <p style="color: #ffeef1; margin: 0; font-size: 12px;">' . esc_html__('Testing email interception and processing', 'emailit-integration') . '</p>
                         </td>
                     </tr>
 
                     <!-- Content -->
                     <tr>
-                        <td style="padding: 24px 20px;">
+                        <td style="padding: 12px 16px;">
                             <!-- Diagnostic Badge -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; margin: 0 0 16px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; margin: 0 0 8px 0;">
                                 <tr>
-                                    <td style="padding: 16px; text-align: center;">
-                                        <div style="font-size: 32px; margin-bottom: 8px; color: #fd7e14;">🔍</div>
-                                        <h2 style="color: #856404; margin: 0 0 8px 0; font-size: 18px;">' . esc_html__('Diagnostic Test Complete', 'emailit-integration') . '</h2>
-                                        <p style="color: #856404; margin: 0; font-size: 14px;">' . esc_html__('This email was sent through WordPress wp_mail() function', 'emailit-integration') . '</p>
+                                    <td style="padding: 8px; text-align: center;">
+                                        <div style="font-size: 20px; margin-bottom: 4px; color: #fd7e14;">🔍</div>
+                                        <h2 style="color: #856404; margin: 0 0 4px 0; font-size: 14px;">' . esc_html__('Diagnostic Test Complete', 'emailit-integration') . '</h2>
+                                        <p style="color: #856404; margin: 0; font-size: 12px;">' . esc_html__('This email was sent through WordPress wp_mail() function', 'emailit-integration') . '</p>
                                     </td>
                                 </tr>
                             </table>
 
-                            <p style="color: #495057; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">' . sprintf(__('This test email was sent from <strong>%s</strong> using the standard WordPress wp_mail() function. If you received this email, it means the Emailit plugin successfully intercepted the wp_mail() call and routed it through the Emailit API.', 'emailit-integration'), esc_html($site_name)) . '</p>
+                            <p style="color: #495057; font-size: 13px; line-height: 1.4; margin: 0 0 8px 0;">' . sprintf(__('This test email was sent from <strong>%s</strong> using the standard WordPress wp_mail() function. If you received this email, it means the Emailit plugin successfully intercepted the wp_mail() call and routed it through the Emailit API.', 'emailit-integration'), esc_html($site_name)) . '</p>
 
                             <!-- Technical Note -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 16px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 8px 0;">
                                 <tr>
-                                    <td style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; border-radius: 0 4px 4px 0;">
-                                        <h4 style="color: #1976d2; margin: 0 0 8px 0; font-size: 14px;">📋 ' . esc_html__('Technical Details', 'emailit-integration') . '</h4>
-                                        <p style="color: #1565c0; margin: 0; font-size: 13px; line-height: 1.4;">' . esc_html__('This test helps verify that the plugin properly hooks into WordPress\'s email system. The wp_mail() function is used by contact forms, user registration, password resets, and other WordPress features.', 'emailit-integration') . '</p>
+                                    <td style="background: #e3f2fd; border-left: 3px solid #2196f3; padding: 8px; border-radius: 0 3px 3px 0;">
+                                        <h4 style="color: #1976d2; margin: 0 0 4px 0; font-size: 12px;">📋 ' . esc_html__('Technical Details', 'emailit-integration') . '</h4>
+                                        <p style="color: #1565c0; margin: 0; font-size: 11px; line-height: 1.3;">' . esc_html__('This test helps verify that the plugin properly hooks into WordPress\'s email system. The wp_mail() function is used by contact forms, user registration, password resets, and other WordPress features.', 'emailit-integration') . '</p>
                                     </td>
                                 </tr>
                             </table>
 
                             <!-- Info Card -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f8f9fa; border-radius: 6px; margin: 0 0 16px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f8f9fa; border-radius: 4px; margin: 0 0 8px 0;">
                                 <tr>
-                                    <td style="padding: 16px;">
-                                        <h3 style="margin: 0 0 12px 0; color: #495057; font-size: 16px;">' . esc_html__('Test Information', 'emailit-integration') . '</h3>
+                                    <td style="padding: 8px;">
+                                        <h3 style="margin: 0 0 6px 0; color: #495057; font-size: 13px;">' . esc_html__('Test Information', 'emailit-integration') . '</h3>
 
                                         <table cellpadding="0" cellspacing="0" border="0" width="100%">
                                             <tr>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Website:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('Website:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 11px;">
                                                     ' . esc_html($site_name) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('URL:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('URL:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 11px;">
                                                     ' . esc_html($site_url) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Sent At:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('Sent At:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 11px;">
                                                     ' . esc_html($current_time) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Plugin Version:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('Plugin Version:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 11px;">
                                                     v' . esc_html(EMAILIT_VERSION) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Method:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('Method:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 11px;">
                                                     wp_mail() → Emailit API
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 6px 0;">
-                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Integration Status:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 3px 0;">
+                                                    <strong style="color: #495057; font-size: 11px;">' . esc_html__('Integration Status:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 6px 0; text-align: right; color: #28a745; font-family: monospace; font-size: 13px;">
+                                                <td style="padding: 3px 0; text-align: right; color: #28a745; font-family: monospace; font-size: 11px;">
                                                     ✅ Working
                                                 </td>
                                             </tr>
@@ -2320,13 +2320,13 @@ class Emailit_Admin {
                                 </tr>
                             </table>
 
-                            <p style="color: #495057; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">🎯 ' . esc_html__('Perfect! Your WordPress site is properly integrated with Emailit. All plugins and features that send emails through wp_mail() will now be delivered via the Emailit service, providing better deliverability and tracking capabilities.', 'emailit-integration') . '</p>
+                            <p style="color: #495057; font-size: 12px; line-height: 1.4; margin: 0 0 8px 0;">🎯 ' . esc_html__('Perfect! Your WordPress site is properly integrated with Emailit. All plugins and features that send emails through wp_mail() will now be delivered via the Emailit service, providing better deliverability and tracking capabilities.', 'emailit-integration') . '</p>
 
                             <!-- CTA Button -->
                             <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0;">
                                 <tr>
                                     <td align="center">
-                                        <a href="' . esc_url(admin_url('tools.php?page=emailit-logs')) . '" style="display: inline-block; background: #d63384; color: #ffffff; padding: 10px 20px; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 14px;">' . esc_html__('View Emailit Log', 'emailit-integration') . '</a>
+                                        <a href="' . esc_url(admin_url('tools.php?page=emailit-logs')) . '" style="display: inline-block; background: #d63384; color: #ffffff; padding: 6px 12px; border-radius: 3px; text-decoration: none; font-weight: 600; font-size: 12px;">' . esc_html__('View Emailit Log', 'emailit-integration') . '</a>
                                     </td>
                                 </tr>
                             </table>
@@ -2335,13 +2335,13 @@ class Emailit_Admin {
 
                     <!-- Footer -->
                     <tr>
-                        <td style="background: #f8f9fa; padding: 16px; text-align: center; color: #6c757d; font-size: 12px; border-radius: 0 0 8px 8px;">
+                        <td style="background: #f8f9fa; padding: 8px; text-align: center; color: #6c757d; font-size: 10px; border-radius: 0 0 4px 4px;">
                             <p style="margin: 0;">' . sprintf(
                                 __('This diagnostic email was sent by the %s plugin. %s', 'emailit-integration'),
                                 '<strong>Emailit Integration</strong>',
                                 '<a href="https://emailit.com/docs" target="_blank" style="color: #007cba; text-decoration: none;">View Documentation</a>'
                             ) . '</p>
-                            <p style="margin: 8px 0 0 0; font-size: 11px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
+                            <p style="margin: 4px 0 0 0; font-size: 9px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
                         </td>
                     </tr>
                 </table>
