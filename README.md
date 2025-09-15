@@ -21,10 +21,6 @@ The complete WordPress plugin with enterprise-grade email functionality and impr
 
 **👉 [View Complete Plugin Documentation](./emailit-integration/README.md)**
 
-### 📚 Additional Components
-- **breakdance/**: Breakdance page builder plugin for development testing
-- **fluent-crm/**: FluentCRM plugin for integration testing and development
-
 ## 🚀 Quick Overview
 
 The Emailit Integration plugin transforms WordPress email delivery with:
