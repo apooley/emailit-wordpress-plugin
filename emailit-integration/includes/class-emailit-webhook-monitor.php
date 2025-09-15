@@ -145,12 +145,15 @@ class Emailit_Webhook_Monitor {
     private function check_webhook_errors() {
         global $wpdb;
 
-        // Get webhook processing errors in the last 24 hours
+        // Get webhook processing errors in the last 24 hours (excluding test webhooks)
         $error_count = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*)
             FROM {$this->webhook_logs_table}
             WHERE processed_at >= %s
             AND status = 'failed'
+            AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+            AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')
         ", date('Y-m-d H:i:s', time() - 86400)));
 
         if ($error_count > 0) {
@@ -193,6 +196,8 @@ class Emailit_Webhook_Monitor {
     public function get_webhook_health_status() {
         global $wpdb;
 
+        error_log('[Emailit DEBUG] get_webhook_health_status called');
+
         $status = array(
             'webhooks_enabled' => get_option('emailit_enable_webhooks', 1),
             'last_webhook' => null,
@@ -207,11 +212,22 @@ class Emailit_Webhook_Monitor {
             return $status;
         }
 
-        // Get last webhook received
+        // Check if table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->webhook_logs_table}'");
+        if (!$table_exists) {
+            error_log('[Emailit ERROR] Webhook logs table does not exist: ' . $this->webhook_logs_table);
+            $status['health_score'] = 0;
+            return $status;
+        }
+
+        // Get last webhook received (excluding test webhooks)
         $last_webhook = $wpdb->get_row("
             SELECT processed_at, event_type, email_id
             FROM {$this->webhook_logs_table}
             WHERE status = 'processed'
+            AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+            AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')
             ORDER BY processed_at DESC
             LIMIT 1
         ");
@@ -245,12 +261,15 @@ class Emailit_Webhook_Monitor {
             AND TIMESTAMPDIFF(MINUTE, e.sent_at, w.processed_at) > 60
         ", date('Y-m-d H:i:s', time() - 86400)));
 
-        // Count webhook errors (last 24 hours)
+        // Count webhook errors (last 24 hours, excluding test webhooks)
         $status['error_count'] = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*)
             FROM {$this->webhook_logs_table}
             WHERE processed_at >= %s
             AND status = 'failed'
+            AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+            AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')
         ", date('Y-m-d H:i:s', time() - 86400)));
 
         // Calculate health score
@@ -265,6 +284,7 @@ class Emailit_Webhook_Monitor {
             $status['health_score'] -= min($status['error_count'] * 15, 30);
         }
 
+        error_log('[Emailit DEBUG] get_webhook_health_status returning: ' . json_encode($status));
         return $status;
     }
 
@@ -274,7 +294,25 @@ class Emailit_Webhook_Monitor {
     public function get_webhook_statistics($days = 7) {
         global $wpdb;
 
+        error_log('[Emailit DEBUG] get_webhook_statistics called with days: ' . $days);
+
         $cutoff_time = date('Y-m-d H:i:s', time() - ($days * 86400));
+        error_log('[Emailit DEBUG] Cutoff time: ' . $cutoff_time);
+
+        // Check if table exists first
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->webhook_logs_table}'");
+        if (!$table_exists) {
+            error_log('[Emailit ERROR] Webhook logs table does not exist for statistics: ' . $this->webhook_logs_table);
+            return array(
+                'total_webhooks' => 0,
+                'processed_webhooks' => 0,
+                'failed_webhooks' => 0,
+                'delivery_webhooks' => 0,
+                'bounce_webhooks' => 0,
+                'complaint_webhooks' => 0,
+                'success_rate' => 0
+            );
+        }
 
         $stats = $wpdb->get_row($wpdb->prepare("
             SELECT 
@@ -287,9 +325,12 @@ class Emailit_Webhook_Monitor {
                 AVG(CASE WHEN status = 'processed' THEN 1 ELSE 0 END) * 100 as success_rate
             FROM {$this->webhook_logs_table}
             WHERE processed_at >= %s
+            AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+            AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')
         ", $cutoff_time));
 
-        return array(
+        $result = array(
             'total_webhooks' => intval($stats->total_webhooks),
             'processed_webhooks' => intval($stats->processed_webhooks),
             'failed_webhooks' => intval($stats->failed_webhooks),
@@ -298,6 +339,9 @@ class Emailit_Webhook_Monitor {
             'complaint_webhooks' => intval($stats->complaint_webhooks),
             'success_rate' => round($stats->success_rate, 1)
         );
+        
+        error_log('[Emailit DEBUG] get_webhook_statistics returning: ' . json_encode($result));
+        return $result;
     }
 
     /**
@@ -305,6 +349,22 @@ class Emailit_Webhook_Monitor {
      */
     public function get_recent_webhook_activity($limit = 20) {
         global $wpdb;
+
+        error_log('[Emailit DEBUG] get_recent_webhook_activity called with limit: ' . $limit);
+
+        // Check if tables exist first
+        $webhook_table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->webhook_logs_table}'");
+        $email_table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->email_logs_table}'");
+        
+        if (!$webhook_table_exists) {
+            error_log('[Emailit ERROR] Webhook logs table does not exist for recent activity: ' . $this->webhook_logs_table);
+            return array();
+        }
+        
+        if (!$email_table_exists) {
+            error_log('[Emailit ERROR] Email logs table does not exist for recent activity: ' . $this->email_logs_table);
+            return array();
+        }
 
         $webhooks = $wpdb->get_results($wpdb->prepare("
             SELECT 
@@ -319,10 +379,20 @@ class Emailit_Webhook_Monitor {
                 e.subject
             FROM {$this->webhook_logs_table} w
             LEFT JOIN {$this->email_logs_table} e ON w.email_id = e.email_id
+            WHERE (w.details IS NULL OR w.details = '' OR JSON_EXTRACT(w.details, '$.subject') IS NULL OR JSON_EXTRACT(w.details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (e.subject IS NULL OR e.subject NOT LIKE 'Test Webhook -%')
             ORDER BY w.processed_at DESC
             LIMIT %d
         ", $limit));
 
+        error_log('[Emailit DEBUG] get_recent_webhook_activity returning ' . count($webhooks) . ' webhooks');
+        
+        // Debug: Log first webhook data if available
+        if (!empty($webhooks) && defined('WP_DEBUG') && WP_DEBUG) {
+            $first_webhook = $webhooks[0];
+            error_log('[Emailit DEBUG] First webhook data: ' . print_r($first_webhook, true));
+        }
+        
         return $webhooks;
     }
 

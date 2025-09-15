@@ -257,7 +257,10 @@ class Emailit_Metrics_Collector {
                 SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_webhooks,
                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_webhooks
             FROM {$webhook_table} 
-            WHERE processed_at >= %s",
+            WHERE processed_at >= %s
+            AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+            AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+            AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')",
             $one_hour_ago
         ));
         
@@ -646,6 +649,9 @@ class Emailit_Metrics_Collector {
                     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_webhooks
                 FROM {$webhook_table}
                 WHERE processed_at >= %s
+                AND (details IS NULL OR details = '' OR JSON_EXTRACT(details, '$.subject') IS NULL OR JSON_EXTRACT(details, '$.subject') NOT LIKE 'Test Webhook -%')
+                AND (event_id IS NULL OR event_id NOT LIKE 'WEBHOOKTEST_%')
+                AND (email_id IS NULL OR email_id NOT LIKE 'TEST_EMAIL_%')
             ", $time_condition));
 
             return array(

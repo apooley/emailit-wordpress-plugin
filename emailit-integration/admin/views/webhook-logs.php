@@ -8,6 +8,55 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Decode MIME-encoded header
+ */
+if (!function_exists('decode_mime_header')) {
+function decode_mime_header($header) {
+    if (strpos($header, '=?') !== 0) {
+        return $header;
+    }
+    
+    // Handle multiple encoded parts
+    $decoded = '';
+    $parts = explode(' ', $header);
+    
+    foreach ($parts as $part) {
+        if (strpos($part, '=?') === 0) {
+            // Extract encoding and data
+            if (preg_match('/=\?([^?]+)\?([BQ])\?([^?]+)\?=/', $part, $matches)) {
+                $charset = $matches[1];
+                $encoding = $matches[2];
+                $data = $matches[3];
+                
+                if ($encoding === 'B') {
+                    // Base64 decode
+                    $decoded_data = base64_decode($data);
+                } elseif ($encoding === 'Q') {
+                    // Quoted-printable decode
+                    $decoded_data = quoted_printable_decode(str_replace('_', ' ', $data));
+                } else {
+                    $decoded_data = $data;
+                }
+                
+                // Convert charset if needed
+                if (function_exists('mb_convert_encoding') && $charset !== 'UTF-8') {
+                    $decoded_data = mb_convert_encoding($decoded_data, 'UTF-8', $charset);
+                }
+                
+                $decoded .= $decoded_data;
+            } else {
+                $decoded .= $part;
+            }
+        } else {
+            $decoded .= ' ' . $part;
+        }
+    }
+    
+    return $decoded;
+}
+}
+
 // Ensure we have the required data
 $webhook_health = isset($webhook_health) ? $webhook_health : array();
 $webhook_stats = isset($webhook_stats) ? $webhook_stats : array();
@@ -90,27 +139,39 @@ $is_standalone = !isset($is_embedded) || !$is_embedded;
     </div>
 
     <!-- Webhook Alerts -->
-    <?php if (!empty($webhook_alerts)): ?>
+    <?php if (!empty($webhook_alerts) && (!isset($is_embedded) || !$is_embedded)): ?>
     <div class="emailit-webhook-alerts">
         <h2><?php _e('Webhook Alerts', 'emailit-integration'); ?></h2>
         
-        <?php foreach ($webhook_alerts as $index => $alert): ?>
-            <?php if (!$alert['dismissed']): ?>
-            <div class="notice notice-warning is-dismissible webhook-alert" data-alert-index="<?php echo $index; ?>">
-                <p>
-                    <strong><?php _e('Webhook Alert:', 'emailit-integration'); ?></strong>
-                    <?php echo esc_html($alert['data']['message']); ?>
-                </p>
+        <?php 
+        // Remove duplicates by tracking unique alert messages
+        $displayed_alerts = array();
+        foreach ($webhook_alerts as $index => $alert): 
+            if (!$alert['dismissed']) {
+                $alert_key = md5($alert['data']['message'] . $alert['type']);
+                if (!isset($displayed_alerts[$alert_key])) {
+                    $displayed_alerts[$alert_key] = true;
+        ?>
+            <div class="notice notice-warning is-dismissible webhook-alert emailit-webhook-alert-item" data-alert-index="<?php echo $index; ?>">
+                <div class="emailit-alert-content">
+                    <p>
+                        <strong><?php _e('Webhook Alert:', 'emailit-integration'); ?></strong>
+                        <?php echo esc_html($alert['data']['message']); ?>
+                    </p>
+                </div>
                 <button type="button" class="notice-dismiss dismiss-webhook-alert" data-alert-index="<?php echo $index; ?>">
                     <span class="screen-reader-text"><?php _e('Dismiss this notice.', 'emailit-integration'); ?></span>
                 </button>
             </div>
-            <?php endif; ?>
-        <?php endforeach; ?>
+            <?php 
+                }
+            }
+        endforeach; ?>
     </div>
     <?php endif; ?>
 
     <!-- Webhook Statistics -->
+    <?php if (!isset($is_embedded) || !$is_embedded): ?>
     <div class="emailit-webhook-stats">
         <h2><?php _e('Webhook Statistics (Last 7 Days)', 'emailit-integration'); ?></h2>
         
@@ -146,6 +207,7 @@ $is_standalone = !isset($is_embedded) || !$is_embedded;
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Webhook Log Management -->
     <div class="emailit-webhook-management">
@@ -186,6 +248,9 @@ $is_standalone = !isset($is_embedded) || !$is_embedded;
         <?php if (empty($recent_webhooks)): ?>
             <div class="no-webhooks">
                 <p><?php _e('No webhook activity found.', 'emailit-integration'); ?></p>
+                <?php if (defined('WP_DEBUG') && WP_DEBUG): ?>
+                    <p><small><?php _e('Debug: No webhook data returned from webhook monitor.', 'emailit-integration'); ?></small></p>
+                <?php endif; ?>
             </div>
         <?php else: ?>
             <div class="webhook-table-container">
@@ -205,36 +270,73 @@ $is_standalone = !isset($is_embedded) || !$is_embedded;
                         <?php foreach ($recent_webhooks as $webhook): 
                             $is_test_webhook = (strpos($webhook->event_id ?: '', 'WEBHOOKTEST_') === 0) || 
                                               (strpos($webhook->email_id ?: '', 'TEST_EMAIL_') === 0);
+                            
+                            // Extract email details from webhook details field
+                            $webhook_details = array();
+                            if (!empty($webhook->details)) {
+                                $webhook_details = json_decode($webhook->details, true);
+                            }
+                            
+                            // Get email information from webhook details or fallback to joined data
+                            $to_email = !empty($webhook_details['to_email']) ? $webhook_details['to_email'] : ($webhook->to_email ?: __('N/A', 'emailit-integration'));
+                            $subject = !empty($webhook_details['subject']) ? $webhook_details['subject'] : ($webhook->subject ?: __('N/A', 'emailit-integration'));
+                            
+                            // Decode MIME-encoded subject lines
+                            if ($subject !== __('N/A', 'emailit-integration') && strpos($subject, '=?') === 0) {
+                                $subject = decode_mime_header($subject);
+                            }
+                            
+                            // Skip test webhooks based on subject
+                            if (strpos($subject, 'Test Webhook -') === 0) {
+                                continue;
+                            }
+                            
+                            // Handle timestamp display with better error checking
+                            $time_ago = '';
+                            $timestamp_display = '';
+                            if (!empty($webhook->processed_at)) {
+                                $timestamp = strtotime($webhook->processed_at);
+                                if ($timestamp !== false && $timestamp > 0) {
+                                    $time_ago = human_time_diff($timestamp, current_time('timestamp')) . ' ago';
+                                    $timestamp_display = $webhook->processed_at;
+                                } else {
+                                    $time_ago = __('Invalid timestamp', 'emailit-integration');
+                                    $timestamp_display = $webhook->processed_at;
+                                }
+                            } else {
+                                $time_ago = __('No timestamp', 'emailit-integration');
+                                $timestamp_display = __('N/A', 'emailit-integration');
+                            }
                         ?>
                         <tr class="<?php echo $is_test_webhook ? 'test-webhook-row' : ''; ?>">
                             <td>
                                 <?php if ($is_test_webhook): ?>
                                     <span class="test-webhook-badge" title="<?php _e('Test Webhook', 'emailit-integration'); ?>">🧪</span>
                                 <?php endif; ?>
-                                <?php echo esc_html(human_time_diff(strtotime($webhook->processed_at), current_time('timestamp'))); ?> ago
+                                <?php echo esc_html($time_ago); ?>
                                 <br>
-                                <small><?php echo esc_html($webhook->processed_at); ?></small>
+                                <small><?php echo esc_html($timestamp_display); ?></small>
                             </td>
                             <td>
-                                <span class="event-type event-<?php echo esc_attr(str_replace('.', '-', $webhook->event_type)); ?>">
-                                    <?php echo esc_html($webhook->event_type); ?>
+                                <span class="event-type event-<?php echo esc_attr(str_replace('.', '-', $webhook->event_type ?: 'unknown')); ?>">
+                                    <?php echo esc_html($webhook->event_type ?: __('N/A', 'emailit-integration')); ?>
                                     <?php if ($is_test_webhook): ?>
                                         <small class="test-indicator">(TEST)</small>
                                     <?php endif; ?>
                                 </span>
                             </td>
                             <td>
-                                <code><?php echo esc_html($webhook->email_id); ?></code>
+                                <code><?php echo esc_html($webhook->email_id ?: __('N/A', 'emailit-integration')); ?></code>
                             </td>
                             <td>
-                                <?php echo esc_html($webhook->to_email); ?>
+                                <?php echo esc_html($to_email); ?>
                             </td>
                             <td>
-                                <?php echo esc_html($webhook->subject); ?>
+                                <?php echo esc_html($subject); ?>
                             </td>
                             <td>
-                                <span class="status status-<?php echo esc_attr($webhook->status); ?>">
-                                    <?php echo esc_html(ucfirst($webhook->status)); ?>
+                                <span class="status status-<?php echo esc_attr($webhook->status ?: 'unknown'); ?>">
+                                    <?php echo esc_html(ucfirst($webhook->status ?: 'Unknown')); ?>
                                 </span>
                             </td>
                             <td>

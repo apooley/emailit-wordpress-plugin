@@ -94,9 +94,9 @@ class Emailit_Health_Monitor {
      * Schedule health checks
      */
     public function schedule_health_checks() {
-        // Schedule API connectivity check
+        // Schedule API connectivity check (reduced frequency)
         if (!wp_next_scheduled('emailit_health_check_api')) {
-            wp_schedule_event(time(), 'emailit_5min', 'emailit_health_check_api');
+            wp_schedule_event(time(), 'emailit_30min', 'emailit_health_check_api');
         }
 
         // Schedule webhook health check
@@ -124,9 +124,9 @@ class Emailit_Health_Monitor {
             wp_schedule_event(time(), 'emailit_hourly', 'emailit_health_check_errors');
         }
 
-        // Schedule performance metrics collection
+        // Schedule performance metrics collection (reduced frequency)
         if (!wp_next_scheduled('emailit_health_check_performance')) {
-            wp_schedule_event(time(), 'emailit_5min', 'emailit_health_check_performance');
+            wp_schedule_event(time(), 'emailit_30min', 'emailit_health_check_performance');
         }
 
         // Hook into scheduled events
@@ -184,9 +184,25 @@ class Emailit_Health_Monitor {
             return;
         }
 
+        // Check if we've validated recently (within last 10 minutes)
+        $cache_key = 'emailit_api_validation_cache_' . md5($api_key);
+        $cached_result = get_transient($cache_key);
+        
+        if ($cached_result !== false) {
+            // Use cached result but still record the health check
+            $this->record_health_check('api_connectivity', $cached_result['status'], 
+                $cached_result['message'], $cached_result['data']);
+            return;
+        }
+
         // Test API connectivity with a simple validation request (not sending actual email)
         try {
-            $api = new Emailit_API($this->logger);
+            // Use shared API component instead of creating new instance
+            $api = emailit_get_component('api');
+            if (!$api) {
+                $this->record_health_check('api_connectivity', 'error', 'API component not available');
+                return;
+            }
             
             // Just validate the API key without sending an email
             $validation_result = $this->validate_api_key($api_key);
@@ -195,10 +211,19 @@ class Emailit_Health_Monitor {
             $status = $validation_result['valid'] ? 'success' : 'error';
             $message = $validation_result['valid'] ? 'API key is valid' : $validation_result['message'];
 
-            $this->record_health_check('api_connectivity', $status, $message, array(
+            $check_data = array(
                 'response_time' => $response_time,
                 'error_code' => $validation_result['valid'] ? null : 'invalid_api_key'
-            ));
+            );
+
+            // Cache the result for 10 minutes
+            set_transient($cache_key, array(
+                'status' => $status,
+                'message' => $message,
+                'data' => $check_data
+            ), 600); // 10 minutes
+
+            $this->record_health_check('api_connectivity', $status, $message, $check_data);
 
             // Check if response time exceeds threshold
             if ($response_time > $this->alert_thresholds['api_response_time']) {

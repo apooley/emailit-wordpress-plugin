@@ -50,6 +50,10 @@
             // API key field enhancements
             $(document).on('focus', '#emailit_api_key', this.handleApiKeyFocus);
             $(document).on('input', '#emailit_api_key', this.handleApiKeyInput);
+            $(document).on('click', '#clear-api-key', this.clearApiKey);
+
+            // Webhook alert dismissal
+            $(document).on('click', '.dismiss-webhook-alert', this.dismissWebhookAlert);
         },
 
         /**
@@ -262,13 +266,37 @@
             $.post(emailit_ajax.ajax_url, data)
                 .done(function(response) {
                     if (response.success) {
-                        $('#queue-pending').text(response.data.pending || 0);
-                        $('#queue-processing').text(response.data.processing || 0);
-                        $('#queue-failed').text(response.data.failed || 0);
+                        // Check if queue is disabled
+                        if (response.data.queue_disabled) {
+                            $('#queue-pending').text('Queue Disabled');
+                            $('#queue-processing').text('Queue Disabled');
+                            $('#queue-failed').text('Queue Disabled');
+                            
+                            // Show notice about enabling queue
+                            if (!$('.queue-disabled-notice').length) {
+                                $('<div class="notice notice-info queue-disabled-notice"><p><strong>Queue is disabled.</strong> Enable asynchronous sending in the settings above to use the queue system.</p></div>')
+                                    .insertAfter('#queue-status-info');
+                            }
+                        } else {
+                            $('#queue-pending').text(response.data.pending || 0);
+                            $('#queue-processing').text(response.data.processing || 0);
+                            $('#queue-failed').text(response.data.failed || 0);
+                            
+                            // Remove notice if queue is enabled
+                            $('.queue-disabled-notice').remove();
+                        }
+                    } else {
+                        // Handle error case
+                        $('#queue-pending').text('Error');
+                        $('#queue-processing').text('Error');
+                        $('#queue-failed').text('Error');
                     }
                 })
                 .fail(function() {
-                    // Handle failure silently, just reset button
+                    // Handle failure
+                    $('#queue-pending').text('Error');
+                    $('#queue-processing').text('Error');
+                    $('#queue-failed').text('Error');
                 })
                 .always(function() {
                     $button.prop('disabled', false).text('Refresh Stats');
@@ -294,10 +322,20 @@
                     if (response.success) {
                         // Refresh stats after processing
                         $('#refresh-queue-stats').click();
+                        
+                        // Show success message
+                        if (response.data && response.data.message) {
+                            EmailitAdmin.showNotification(response.data.message, 'success');
+                        }
+                    } else {
+                        // Show error message
+                        if (response.data && response.data.message) {
+                            EmailitAdmin.showNotification(response.data.message, 'error');
+                        }
                     }
                 })
                 .fail(function() {
-                    // Handle failure silently
+                    EmailitAdmin.showNotification('Failed to process queue. Please try again.', 'error');
                 })
                 .always(function() {
                     $button.prop('disabled', false).text('Process Queue Now');
@@ -555,6 +593,99 @@
         },
 
         /**
+         * Clear API key completely
+         */
+        clearApiKey: function(e) {
+            e.preventDefault();
+
+            if (!confirm('Are you sure you want to completely remove the API key? This will disable all email functionality until a new key is entered.')) {
+                return;
+            }
+
+            var $button = $(this);
+            var $apiKeyField = $('#emailit_api_key');
+            var $actions = $('.emailit-api-key-actions');
+
+            $button.prop('disabled', true).text('Clearing...');
+
+            var data = {
+                action: 'emailit_clear_api_key',
+                nonce: emailit_ajax.nonce
+            };
+
+            $.post(emailit_ajax.ajax_url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        // Clear the field and update UI
+                        $apiKeyField.val('').attr('placeholder', 'Enter your Emailit API key').data('has-key', '0');
+                        $actions.remove(); // Remove the clear button
+                        
+                        // Show success message
+                        EmailitAdmin.showNotification('API key cleared successfully.', 'success');
+                        
+                        // Refresh the page to update all health indicators
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        EmailitAdmin.showNotification('Error clearing API key: ' + response.data.message, 'error');
+                    }
+                })
+                .fail(function() {
+                    EmailitAdmin.showNotification('Error clearing API key. Please try again.', 'error');
+                })
+                .always(function() {
+                    $button.prop('disabled', false).text('Clear API Key');
+                });
+        },
+
+        /**
+         * Dismiss webhook alert
+         */
+        dismissWebhookAlert: function(e) {
+            e.preventDefault();
+
+            var $button = $(this);
+            var $alert = $button.closest('.webhook-alert');
+            var alertIndex = $button.data('alert-index');
+
+            // Immediately hide the alert for better UX
+            $alert.fadeOut(300);
+
+            // Send AJAX request to dismiss the alert
+            $.ajax({
+                url: emailit_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'emailit_dismiss_webhook_alert',
+                    alert_index: alertIndex,
+                    nonce: emailit_ajax.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Remove the alert completely
+                        $alert.remove();
+                        
+                        // Check if there are any more alerts
+                        var $alertContainer = $('.emailit-webhook-alerts');
+                        if ($alertContainer.find('.webhook-alert').length === 0) {
+                            $alertContainer.hide();
+                        }
+                    } else {
+                        // Show the alert again if there was an error
+                        $alert.fadeIn(300);
+                        EmailitAdmin.showNotification('Error dismissing alert. Please try again.', 'error');
+                    }
+                },
+                error: function() {
+                    // Show the alert again if there was an error
+                    $alert.fadeIn(300);
+                    EmailitAdmin.showNotification('Error dismissing alert. Please try again.', 'error');
+                }
+            });
+        },
+
+        /**
          * Format date for display
          */
         formatDate: function(dateString) {
@@ -700,6 +831,17 @@
                         .emailit-form-table .field-wrapper.focused {
                             transform: scale(1.02);
                             transition: transform 0.2s ease;
+                        }
+                        .queue-disabled-notice {
+                            margin: 15px 0;
+                            padding: 12px;
+                            background: #f0f6fc;
+                            border-left: 4px solid #0073aa;
+                            border-radius: 4px;
+                        }
+                        .queue-disabled-notice p {
+                            margin: 0;
+                            color: #0073aa;
                         }
                     </style>
                 `;

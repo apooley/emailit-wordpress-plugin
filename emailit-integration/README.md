@@ -1,6 +1,16 @@
 # Emailit Integration for WordPress
 
-**Version 3.0.0** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
+**Version 3.0.2** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
+
+## 🐛 **Version 3.0.2 - Squished some bugs**
+- **Squished some bugs**: Fixed various issues and improved overall stability
+
+## 🐛 **Version 3.0.1 - Bug Fixes & UI Improvements**
+- **Fixed Header Congestion**: Resolved duplicate webhook alert messages in admin settings header
+- **Improved Layout**: Enhanced message box widths and spacing for better readability
+- **Squashed Various Bugs**: Fixed issues related to admin-ajax calls and health views
+- **Enhanced Responsiveness**: Better mobile layout and responsive design improvements
+- **Webhook Alert Management**: Added proper dismissal functionality and duplicate prevention
 
 ## 🎨 **Version 3.0.0 - Major UX Overhaul**
 
@@ -19,20 +29,19 @@
 - **Visual Indicators**: Clear expand/collapse icons and hover effects
 
 #### **📊 Simplified Tab Structure**
-- **Consolidated Navigation**: Reduced from 6 tabs to 3 clear sections
-  - **General**: Essential settings, API configuration, testing, real-time status
-  - **Logs & Statistics**: Email logs, webhook activity, quick stats overview
+- **Consolidated Navigation**: Streamlined interface with 3 clear sections
+  - **General**: Essential settings, API configuration, testing, and real-time status
+  - **Webhooks**: Webhook configuration, activity monitoring, and logs
   - **Advanced**: Power user features (collapsible sections)
 - **Logical Flow**: Intuitive progression from basic to advanced features
 - **Responsive Design**: Optimized for all screen sizes
 
-#### **🎯 Health Score Dashboard**
-- **Overall Health Score**: Single 0-100 score showing system health at a glance
-- **Real-Time Metrics**: Live API status, queue processing, error rates, webhook health
-- **Visual Design**: Gradient background with glassmorphism effects
-- **Smart Recommendations**: Context-aware suggestions for system optimization
-- **Auto-Updating**: Refreshes every 30 seconds with smooth AJAX updates
-- **Performance Monitoring**: Track system health trends and identify issues early
+#### **📊 Real-Time Status Monitoring**
+- **Live API Status**: Real-time API connectivity and validation status
+- **Queue Processing**: Current queue status and processing metrics
+- **Webhook Activity**: Live webhook status and recent activity monitoring
+- **Quick Statistics**: Essential metrics at a glance
+- **Auto-Updating**: Refreshes automatically with smooth AJAX updates
 
 #### **❓ Contextual Help System**
 - **Smart Tooltips**: Hover help icons with detailed explanations
@@ -151,24 +160,24 @@ wp plugin install /path/to/emailit-integration.zip --activate
 ## 🎯 **User Interface Guide**
 
 ### **General Tab (All Users)**
-- **Health Score Dashboard**: Overall system health with real-time metrics and recommendations
 - **API Configuration**: Emailit API key and basic settings
 - **Email Settings**: Default email configuration
 - **Test Email**: Send test emails to verify configuration
+- **Real-Time Status**: Live API status, queue processing, and webhook activity
 - **Logging Settings**: Basic logging configuration
 
-### **Logs & Statistics Tab (All Users)**
-- **Quick Stats**: Today's emails, success rate, failed emails, queue count
-- **Recent Activity**: Preview of recent email activity
-- **Webhook Activity**: Webhook status and recent activity
-- **Links to Detailed Logs**: Access to comprehensive log pages
+### **Webhooks Tab (All Users)**
+- **Webhook Configuration**: Set up real-time status updates
+- **Webhook Activity**: Live webhook status and recent activity monitoring
+- **Webhook Logs**: Detailed webhook event logs and troubleshooting
+- **Test Webhook**: Built-in webhook testing functionality
 
 ### **Advanced Tab (Power Users)**
 - **Performance & Queue Settings**: Asynchronous email processing
 - **Webhook Configuration**: Real-time status updates setup
 - **Advanced Configuration**: Low-level plugin settings
 - **Performance Status**: Database optimization tools
-- **Health Monitoring**: System health and diagnostics
+- **System Diagnostics**: Error tracking and system monitoring
 
 ---
 
@@ -186,11 +195,11 @@ wp plugin install /path/to/emailit-integration.zip --activate
 - **Security**: HMAC signature verification
 - **Rate Limiting**: Prevent webhook spam
 
-### **Health Monitoring**
-- **System Health**: Monitor overall plugin health
-- **API Connectivity**: Check Emailit API connection
-- **Database Health**: Monitor database performance
+### **System Diagnostics**
 - **Error Tracking**: Track and analyze errors
+- **API Connectivity**: Check Emailit API connection
+- **Database Performance**: Monitor database performance
+- **Log Analysis**: Comprehensive logging and analysis tools
 
 ### **FluentCRM Integration**
 - **Automatic Detection**: Works when FluentCRM is installed
@@ -231,8 +240,8 @@ wp plugin install /path/to/emailit-integration.zip --activate
 ### **Debug Mode**
 Enable debug logging in the Logging Settings to get detailed information about plugin operations.
 
-### **Health Monitor**
-Use the Health Monitor in the Advanced tab to diagnose system issues and performance problems.
+### **System Diagnostics**
+Use the System Diagnostics tools in the Advanced tab to diagnose system issues and performance problems.
 
 ---
 
@@ -292,7 +301,7 @@ Use the Health Monitor in the Advanced tab to diagnose system issues and perform
 - **API Response Times**: Monitor Emailit API performance
 - **Queue Processing**: Track queue processing efficiency
 - **Error Rates**: Monitor and analyze error patterns
-- **System Health**: Overall plugin health and performance
+- **System Performance**: Overall plugin performance and efficiency
 
 ### **Error Analytics**
 - **Pattern Detection**: Identify recurring error patterns
@@ -369,8 +378,8 @@ $stats = emailit_get_queue_stats();
 ### **Version 3.0.0 - Major UX Overhaul**
 - **🎨 Power User Mode**: Customizable interface complexity per user
 - **📁 Progressive Disclosure**: Collapsible advanced sections
-- **📊 Simplified Tabs**: Consolidated from 6 tabs to 3 main sections
-- **🎯 Health Score Dashboard**: Real-time system health monitoring with smart recommendations
+- **📊 Simplified Tabs**: Streamlined interface with 3 main sections
+- **📊 Real-Time Status Monitoring**: Live API status, queue processing, and webhook activity
 - **❓ Contextual Help**: Smart tooltips and user guidance
 - **🎨 Modern Design**: Professional styling and responsive layout
 - **⚡ Enhanced Performance**: Optimized loading and interactions
@@ -399,7 +408,7 @@ $stats = emailit_get_queue_stats();
 ### **Getting Help**
 - **GitHub Issues**: Report bugs and request features
 - **WordPress Admin**: Use built-in diagnostic tools
-- **Health Monitor**: Check system health and performance
+- **System Diagnostics**: Check system performance and troubleshoot issues
 
 ### **Contributing**
 - **GitHub Repository**: Submit pull requests and issues

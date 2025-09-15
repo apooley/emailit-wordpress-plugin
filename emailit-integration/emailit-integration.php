@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 3.0.0
+ * Version: 3.0.2
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '3.0.0');
+define('EMAILIT_VERSION', '3.0.1');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -617,7 +617,9 @@ class Emailit_Integration {
         $indexes_added = $db_optimizer->add_performance_indexes();
         
         if (!empty($indexes_added)) {
-            error_log('[Emailit] Added performance indexes: ' . implode(', ', $indexes_added));
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Added performance indexes: ' . implode(', ', $indexes_added));
+            }
         }
     }
 
@@ -693,8 +695,20 @@ class Emailit_Integration {
      * Get plugin component
      */
     public function get_component($component) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit DEBUG] Plugin get_component called for: ' . $component);
+        }
+        
         if (property_exists($this, $component)) {
-            return $this->$component;
+            $result = $this->$component;
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit DEBUG] Component ' . $component . ' found: ' . (is_object($result) ? get_class($result) : (is_null($result) ? 'null' : gettype($result))));
+            }
+            return $result;
+        }
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit DEBUG] Component ' . $component . ' not found');
         }
         return null;
     }
@@ -711,8 +725,25 @@ function emailit_get_plugin() {
  * Get plugin component
  */
 function emailit_get_component($component) {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('[Emailit DEBUG] Getting component: ' . $component);
+    }
+    
     $plugin = emailit_get_plugin();
-    return $plugin->get_component($component);
+    if (!$plugin) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit DEBUG] Plugin instance not available');
+        }
+        return null;
+    }
+    
+    $result = $plugin->get_component($component);
+    
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('[Emailit DEBUG] Component ' . $component . ' result: ' . (is_object($result) ? get_class($result) : (is_null($result) ? 'null' : gettype($result))));
+    }
+    
+    return $result;
 }
 
 /**

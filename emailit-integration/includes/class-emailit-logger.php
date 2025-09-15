@@ -480,6 +480,67 @@ class Emailit_Logger {
     }
 
     /**
+     * Get recent email count for a specific number of hours
+     */
+    public function get_recent_email_count($hours = 24) {
+        global $wpdb;
+        
+        $date_from = date('Y-m-d H:i:s', strtotime("-{$hours} hours"));
+        
+        $count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$this->logs_table} WHERE created_at >= %s",
+            $date_from
+        ));
+        
+        return $count;
+    }
+
+    /**
+     * Get daily stats for a specific date
+     */
+    public function get_daily_stats($date) {
+        global $wpdb;
+        
+        $date_start = $date . ' 00:00:00';
+        $date_end = $date . ' 23:59:59';
+        
+        // Get total count for the day
+        $total = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$this->logs_table} WHERE created_at BETWEEN %s AND %s",
+            $date_start, $date_end
+        ));
+        
+        if ($total === 0) {
+            return null;
+        }
+        
+        // Get status breakdown for the day
+        $status_stats = $wpdb->get_results($wpdb->prepare("
+            SELECT status, COUNT(*) as count
+            FROM {$this->logs_table}
+            WHERE created_at BETWEEN %s AND %s
+            GROUP BY status
+        ", $date_start, $date_end), ARRAY_A);
+        
+        $stats = array(
+            'sent' => 0,
+            'failed' => 0,
+            'bounced' => 0,
+            'pending' => 0,
+            'held' => 0,
+            'delayed' => 0
+        );
+        
+        foreach ($status_stats as $stat) {
+            if (isset($stats[$stat['status']])) {
+                $stats[$stat['status']] = (int) $stat['count'];
+            }
+        }
+        
+        return $stats;
+    }
+
+    /**
      * Get email statistics
      */
     public function get_stats($days = 30) {

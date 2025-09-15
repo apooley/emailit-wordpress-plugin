@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)
+![Version](https://img.shields.io/badge/Version-3.0.2-green.svg)
 
 ## 📁 Repository Contents
 
@@ -163,6 +163,16 @@ This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) 
 ---
 
 ## 📋 **Previous Major Updates**
+
+### Version 3.0.2 - Squished some bugs
+- **Squished some bugs**: Fixed various issues and improved overall stability
+
+### Version 3.0.1 - Bug Fixes & UI Improvements
+- **Fixed Header Congestion**: Resolved duplicate webhook alert messages in admin settings header
+- **Improved Layout**: Enhanced message box widths and spacing for better readability
+- **Squashed Various Bugs**: Fixed issues related to admin-ajax calls and health views
+- **Enhanced Responsiveness**: Better mobile layout and responsive design improvements
+- **Webhook Alert Management**: Added proper dismissal functionality and duplicate prevention
 
 ### Version 2.6.4 - Webhook Logs & UI Improvements
 - **Webhook Logs Integration**: Moved webhook logs to Webhooks tab for better UX
