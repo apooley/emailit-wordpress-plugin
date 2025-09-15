@@ -277,6 +277,13 @@ class Emailit_Logger {
      * Get email logs with pagination
      */
     public function get_logs($args = array()) {
+        // Use query optimizer if available
+        $query_optimizer = emailit_get_component('query_optimizer');
+        if ($query_optimizer) {
+            return $query_optimizer->get_email_logs($args);
+        }
+
+        // Fallback to original implementation
         global $wpdb;
 
         $defaults = array(

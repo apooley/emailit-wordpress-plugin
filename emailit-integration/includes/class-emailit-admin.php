@@ -112,6 +112,16 @@ class Emailit_Admin {
             $this->logs_page,
             array($this, 'logs_page_callback')
         );
+
+        // Database Optimizer submenu
+        add_submenu_page(
+            'tools.php',
+            __('Database Optimizer', 'emailit-integration'),
+            __('DB Optimizer', 'emailit-integration'),
+            'manage_options',
+            'emailit-db-optimizer',
+            array($this, 'db_optimizer_page_callback')
+        );
     }
 
     /**
@@ -204,6 +214,51 @@ class Emailit_Admin {
             'default' => 3
         ));
 
+        // FluentCRM Integration settings (only register if FluentCRM is available)
+        if ($this->is_fluentcrm_available()) {
+            register_setting('emailit-settings', 'emailit_fluentcrm_integration', array(
+                'type' => 'boolean',
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 1
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_forward_bounces', array(
+                'type' => 'boolean',
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 1
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_suppress_default', array(
+                'type' => 'boolean',
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 0
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_hard_bounce_action', array(
+                'type' => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'default' => 'unsubscribe'
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_action', array(
+                'type' => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'default' => 'track'
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_threshold', array(
+                'type' => 'integer',
+                'sanitize_callback' => 'absint',
+                'default' => 5
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_complaint_action', array(
+                'type' => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'default' => 'unsubscribe'
+            ));
+        }
+
         // Add settings sections
         add_settings_section(
             'emailit_api_section',
@@ -246,6 +301,16 @@ class Emailit_Admin {
             array($this, 'webhook_section_callback'),
             'emailit-settings'
         );
+
+        // Only add FluentCRM section if FluentCRM is available
+        if ($this->is_fluentcrm_available()) {
+            add_settings_section(
+                'emailit_fluentcrm_section',
+                __('FluentCRM Integration', 'emailit-integration'),
+                array($this, 'fluentcrm_section_callback'),
+                'emailit-settings'
+            );
+        }
 
         // Add settings fields
         $this->add_settings_fields();
@@ -371,6 +436,65 @@ class Emailit_Admin {
             'emailit-settings',
             'emailit_webhook_section'
         );
+
+        // FluentCRM Integration fields (only add if FluentCRM is available)
+        if ($this->is_fluentcrm_available()) {
+            add_settings_field(
+                'emailit_fluentcrm_integration',
+                __('Enable FluentCRM Integration', 'emailit-integration'),
+                array($this, 'fluentcrm_integration_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_forward_bounces',
+                __('Forward Bounces to Emailit', 'emailit-integration'),
+                array($this, 'fluentcrm_forward_bounces_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_suppress_default',
+                __('Suppress Default WordPress Emails', 'emailit-integration'),
+                array($this, 'fluentcrm_suppress_default_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_hard_bounce_action',
+                __('Hard Bounce Action', 'emailit-integration'),
+                array($this, 'fluentcrm_hard_bounce_action_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_soft_bounce_action',
+                __('Soft Bounce Action', 'emailit-integration'),
+                array($this, 'fluentcrm_soft_bounce_action_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_soft_bounce_threshold',
+                __('Soft Bounce Threshold', 'emailit-integration'),
+                array($this, 'fluentcrm_soft_bounce_threshold_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_complaint_action',
+                __('Complaint Action', 'emailit-integration'),
+                array($this, 'fluentcrm_complaint_action_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+        }
     }
 
     /**
@@ -385,6 +509,13 @@ class Emailit_Admin {
      */
     public function logs_page_callback() {
         include EMAILIT_PLUGIN_DIR . 'admin/views/logs.php';
+    }
+
+    /**
+     * Database Optimizer page callback
+     */
+    public function db_optimizer_page_callback() {
+        include EMAILIT_PLUGIN_DIR . 'admin/views/database-optimizer.php';
     }
 
     /**
@@ -412,6 +543,19 @@ class Emailit_Admin {
 
     public function webhook_section_callback() {
         echo '<p>' . __('Configure webhook settings for real-time email status updates.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_section_callback() {
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<p>' . __('Configure FluentCRM integration for seamless bounce handling and subscriber management.', 'emailit-integration') . '</p>';
+        
+        if ($fluentcrm_status['available']) {
+            echo '<div class="notice notice-success inline"><p><strong>' . __('FluentCRM Detected', 'emailit-integration') . '</strong> - ' . sprintf(__('Version %s is active and ready for integration.', 'emailit-integration'), $fluentcrm_status['version']) . '</p></div>';
+        } else {
+            echo '<div class="notice notice-warning inline"><p><strong>' . __('FluentCRM Not Detected', 'emailit-integration') . '</strong> - ' . __('Install and activate FluentCRM to enable advanced email management features.', 'emailit-integration') . '</p></div>';
+        }
     }
 
     /**
@@ -541,6 +685,117 @@ class Emailit_Admin {
         if (!$webhooks_enabled) {
             echo '<p class="description" style="color: #666;"><em>' . __('Webhook secret is disabled when webhooks are turned off.', 'emailit-integration') . '</em></p>';
         }
+    }
+
+    /**
+     * Check if FluentCRM is available
+     */
+    private function is_fluentcrm_available() {
+        return class_exists('FluentCrm\App\App');
+    }
+
+    /**
+     * FluentCRM Integration field callbacks
+     */
+    public function fluentcrm_integration_field_callback() {
+        $value = get_option('emailit_fluentcrm_integration', 1);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_integration" name="emailit_fluentcrm_integration" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_integration">' . __('Enable FluentCRM integration', 'emailit-integration') . '</label>';
+        
+        if ($fluentcrm_status['available']) {
+            echo '<p class="description">' . __('Automatically sync bounce data between FluentCRM and Emailit for better deliverability management.', 'emailit-integration') . '</p>';
+        } else {
+            echo '<p class="description" style="color: #666;"><em>' . __('FluentCRM integration is disabled because FluentCRM is not installed or active.', 'emailit-integration') . '</em></p>';
+        }
+    }
+
+    public function fluentcrm_forward_bounces_field_callback() {
+        $value = get_option('emailit_fluentcrm_forward_bounces', 1);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_forward_bounces" name="emailit_fluentcrm_forward_bounces" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_forward_bounces">' . __('Forward bounce data to Emailit API', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('When enabled, bounce information from FluentCRM will be forwarded to Emailit for comprehensive tracking.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_suppress_default_field_callback() {
+        $value = get_option('emailit_fluentcrm_suppress_default', 0);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_suppress_default" name="emailit_fluentcrm_suppress_default" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_suppress_default">' . __('Suppress default WordPress emails when FluentCRM is active', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Prevent WordPress from sending duplicate emails when FluentCRM is handling the same functionality.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_hard_bounce_action_field_callback() {
+        $value = get_option('emailit_fluentcrm_hard_bounce_action', 'unsubscribe');
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        $options = array(
+            'unsubscribe' => __('Unsubscribe (Recommended)', 'emailit-integration'),
+            'track' => __('Track Only', 'emailit-integration'),
+            'ignore' => __('Ignore', 'emailit-integration')
+        );
+        
+        echo '<select id="emailit_fluentcrm_hard_bounce_action" name="emailit_fluentcrm_hard_bounce_action"' . ($fluentcrm_status['available'] ? '' : ' disabled') . '>';
+        foreach ($options as $option_value => $option_label) {
+            echo '<option value="' . esc_attr($option_value) . '"' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Action to take when FluentCRM detects a hard bounce (permanent failure).', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_action_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_action', 'track');
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        $options = array(
+            'track' => __('Track Only (Recommended)', 'emailit-integration'),
+            'unsubscribe' => __('Unsubscribe', 'emailit-integration'),
+            'ignore' => __('Ignore', 'emailit-integration')
+        );
+        
+        echo '<select id="emailit_fluentcrm_soft_bounce_action" name="emailit_fluentcrm_soft_bounce_action"' . ($fluentcrm_status['available'] ? '' : ' disabled') . '>';
+        foreach ($options as $option_value => $option_label) {
+            echo '<option value="' . esc_attr($option_value) . '"' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Action to take when FluentCRM detects a soft bounce (temporary failure).', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_threshold_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_threshold', 5);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="number" id="emailit_fluentcrm_soft_bounce_threshold" name="emailit_fluentcrm_soft_bounce_threshold" value="' . esc_attr($value) . '" min="1" max="20" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo '<p class="description">' . __('Number of soft bounces before escalating to hard bounce. Range: 1-20.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_complaint_action_field_callback() {
+        $value = get_option('emailit_fluentcrm_complaint_action', 'unsubscribe');
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        $options = array(
+            'unsubscribe' => __('Unsubscribe (Recommended)', 'emailit-integration'),
+            'track' => __('Track Only', 'emailit-integration'),
+            'ignore' => __('Ignore', 'emailit-integration')
+        );
+        
+        echo '<select id="emailit_fluentcrm_complaint_action" name="emailit_fluentcrm_complaint_action"' . ($fluentcrm_status['available'] ? '' : ' disabled') . '>';
+        foreach ($options as $option_value => $option_label) {
+            echo '<option value="' . esc_attr($option_value) . '"' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Action to take when FluentCRM detects a spam complaint.', 'emailit-integration') . '</p>';
     }
 
     /**

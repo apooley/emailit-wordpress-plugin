@@ -35,6 +35,17 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
            class="nav-tab <?php echo $current_tab === 'webhook' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Webhook', 'emailit-integration'); ?>
         </a>
+        <?php
+        // Only show FluentCRM tab if FluentCRM is installed and active
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        if ($fluentcrm_status['available']) :
+        ?>
+        <a href="#fluentcrm" data-tab="fluentcrm"
+           class="nav-tab <?php echo $current_tab === 'fluentcrm' ? 'nav-tab-active active' : ''; ?>">
+            <?php _e('FluentCRM', 'emailit-integration'); ?>
+        </a>
+        <?php endif; ?>
         <a href="#test" data-tab="test"
            class="nav-tab <?php echo $current_tab === 'test' ? 'nav-tab-active active' : ''; ?>">
             <?php _e('Test', 'emailit-integration'); ?>
@@ -240,6 +251,117 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
 
                 <?php submit_button(); ?>
         </div>
+
+        <!-- FluentCRM Integration Tab -->
+        <?php if ($fluentcrm_status['available']) : ?>
+        <div id="fluentcrm" class="emailit-tab-pane <?php echo $current_tab === 'fluentcrm' ? 'active' : ''; ?>">
+            <h2><?php _e('FluentCRM Integration', 'emailit-integration'); ?></h2>
+
+            <div class="emailit-fluentcrm-info">
+                <p><?php _e('Configure FluentCRM integration for seamless bounce handling and subscriber management.', 'emailit-integration'); ?></p>
+
+                <table class="form-table emailit-form-table" role="presentation">
+                    <tbody>
+                        <?php do_settings_fields('emailit-settings', 'emailit_fluentcrm_section'); ?>
+                    </tbody>
+                </table>
+
+                <!-- FluentCRM Status Information -->
+                <div class="emailit-fluentcrm-status">
+                    <h3><?php _e('Integration Status', 'emailit-integration'); ?></h3>
+                    <?php
+                    $webhook = emailit_get_component('webhook');
+                    $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+                    
+                    if ($fluentcrm_status['available']) {
+                        echo '<div class="notice notice-success inline">';
+                        echo '<p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ';
+                        echo sprintf(__('FluentCRM %s is active and ready for integration.', 'emailit-integration'), $fluentcrm_status['version'] ?: 'Unknown Version');
+                        echo '</p></div>';
+                        
+                        // Show integration details
+                        echo '<table class="widefat striped" style="margin-top: 15px;">';
+                        echo '<thead><tr><th>' . __('Feature', 'emailit-integration') . '</th><th>' . __('Status', 'emailit-integration') . '</th></tr></thead>';
+                        echo '<tbody>';
+                        
+                        $integration_enabled = get_option('emailit_fluentcrm_integration', 1);
+                        $forward_bounces = get_option('emailit_fluentcrm_forward_bounces', 1);
+                        $suppress_default = get_option('emailit_fluentcrm_suppress_default', 0);
+                        
+                        echo '<tr><td><strong>' . __('Integration Enabled', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . ($integration_enabled ? '<span style="color: #46b450;">✓ ' . __('Yes', 'emailit-integration') . '</span>' : '<span style="color: #d63638;">✗ ' . __('No', 'emailit-integration') . '</span>') . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Bounce Forwarding', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . ($forward_bounces ? '<span style="color: #46b450;">✓ ' . __('Enabled', 'emailit-integration') . '</span>' : '<span style="color: #d63638;">✗ ' . __('Disabled', 'emailit-integration') . '</span>') . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Suppress Default Emails', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . ($suppress_default ? '<span style="color: #46b450;">✓ ' . __('Yes', 'emailit-integration') . '</span>' : '<span style="color: #666;">- ' . __('No', 'emailit-integration') . '</span>') . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Hard Bounce Action', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . esc_html(ucfirst(get_option('emailit_fluentcrm_hard_bounce_action', 'unsubscribe'))) . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Soft Bounce Action', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . esc_html(ucfirst(get_option('emailit_fluentcrm_soft_bounce_action', 'track'))) . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Soft Bounce Threshold', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . esc_html(get_option('emailit_fluentcrm_soft_bounce_threshold', 5)) . '</td></tr>';
+                        
+                        echo '<tr><td><strong>' . __('Complaint Action', 'emailit-integration') . '</strong></td>';
+                        echo '<td>' . esc_html(ucfirst(get_option('emailit_fluentcrm_complaint_action', 'unsubscribe'))) . '</td></tr>';
+                        
+                        echo '</tbody></table>';
+                        
+                    } else {
+                        echo '<div class="notice notice-warning inline">';
+                        echo '<p><span class="dashicons dashicons-warning" style="color: #f56e28;"></span> ';
+                        echo __('FluentCRM is not installed or active. Install and activate FluentCRM to enable advanced email management features.', 'emailit-integration');
+                        echo '</p></div>';
+                        
+                        echo '<div class="emailit-fluentcrm-install-info">';
+                        echo '<h4>' . __('How to Install FluentCRM', 'emailit-integration') . '</h4>';
+                        echo '<ol>';
+                        echo '<li>' . __('Go to Plugins → Add New in your WordPress admin', 'emailit-integration') . '</li>';
+                        echo '<li>' . __('Search for "FluentCRM"', 'emailit-integration') . '</li>';
+                        echo '<li>' . __('Install and activate the FluentCRM plugin', 'emailit-integration') . '</li>';
+                        echo '<li>' . __('Return to this page to configure the integration', 'emailit-integration') . '</li>';
+                        echo '</ol>';
+                        echo '<p><a href="' . admin_url('plugin-install.php?s=fluentcrm&tab=search&type=term') . '" class="button button-primary">' . __('Install FluentCRM', 'emailit-integration') . '</a></p>';
+                        echo '</div>';
+                    }
+                    ?>
+                </div>
+
+                <!-- FluentCRM Integration Benefits -->
+                <div class="emailit-fluentcrm-benefits">
+                    <h3><?php _e('Integration Benefits', 'emailit-integration'); ?></h3>
+                    <div class="emailit-benefits-grid">
+                        <div class="emailit-benefit-item">
+                            <span class="dashicons dashicons-email-alt" style="color: #0073aa;"></span>
+                            <h4><?php _e('Automatic Bounce Handling', 'emailit-integration'); ?></h4>
+                            <p><?php _e('Automatically sync bounce data between FluentCRM and Emailit for better deliverability management.', 'emailit-integration'); ?></p>
+                        </div>
+                        <div class="emailit-benefit-item">
+                            <span class="dashicons dashicons-chart-line" style="color: #0073aa;"></span>
+                            <h4><?php _e('Enhanced Analytics', 'emailit-integration'); ?></h4>
+                            <p><?php _e('Get detailed insights into email performance and subscriber engagement across both platforms.', 'emailit-integration'); ?></p>
+                        </div>
+                        <div class="emailit-benefit-item">
+                            <span class="dashicons dashicons-shield" style="color: #0073aa;"></span>
+                            <h4><?php _e('Improved Deliverability', 'emailit-integration'); ?></h4>
+                            <p><?php _e('Better email reputation management through coordinated bounce handling and subscriber management.', 'emailit-integration'); ?></p>
+                        </div>
+                        <div class="emailit-benefit-item">
+                            <span class="dashicons dashicons-admin-tools" style="color: #0073aa;"></span>
+                            <h4><?php _e('Unified Management', 'emailit-integration'); ?></h4>
+                            <p><?php _e('Manage all your email campaigns and subscriber data from a single, integrated platform.', 'emailit-integration'); ?></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <?php submit_button(); ?>
+        </div>
+        <?php endif; ?>
 
         <!-- Test Settings Tab -->
         <div id="test" class="emailit-tab-pane <?php echo $current_tab === 'test' ? 'active' : ''; ?>">
@@ -547,5 +669,88 @@ jQuery(document).ready(function($) {
     border-radius: 3px;
     font-family: monospace;
     margin-right: 10px;
+}
+
+/* FluentCRM Integration Styles */
+.emailit-fluentcrm-info {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.emailit-fluentcrm-status {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+
+.emailit-fluentcrm-benefits {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+
+.emailit-benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.emailit-benefit-item {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 20px;
+    text-align: center;
+    transition: box-shadow 0.3s ease;
+}
+
+.emailit-benefit-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.emailit-benefit-item .dashicons {
+    font-size: 32px;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.emailit-benefit-item h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.emailit-benefit-item p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.emailit-fluentcrm-install-info {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.emailit-fluentcrm-install-info h4 {
+    margin-top: 0;
+    color: #333;
+}
+
+.emailit-fluentcrm-install-info ol {
+    margin: 15px 0;
+    padding-left: 20px;
+}
+
+.emailit-fluentcrm-install-info li {
+    margin-bottom: 8px;
+    color: #666;
 }
 </style>

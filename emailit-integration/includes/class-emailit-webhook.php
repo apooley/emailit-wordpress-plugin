@@ -921,6 +921,34 @@ class Emailit_Webhook {
     }
 
     /**
+     * Get FluentCRM integration status
+     */
+    public function get_fluentcrm_integration_status() {
+        $status = array(
+            'available' => false,
+            'version' => null,
+            'active' => false
+        );
+
+        if (class_exists('FluentCrm\App\App')) {
+            $status['available'] = true;
+            $status['active'] = true;
+            
+            // Try to get version
+            if (defined('FLUENTCRM_VERSION')) {
+                $status['version'] = FLUENTCRM_VERSION;
+            } elseif (function_exists('fluentCrm')) {
+                $app = fluentCrm();
+                if (method_exists($app, 'getVersion')) {
+                    $status['version'] = $app->getVersion();
+                }
+            }
+        }
+
+        return $status;
+    }
+
+    /**
      * Initialize FluentCRM integration
      * Detects FluentCRM and sets up bounce handling integration
      */
@@ -1369,24 +1397,4 @@ class Emailit_Webhook {
         }
     }
 
-    /**
-     * Get FluentCRM integration status for admin display
-     */
-    public function get_fluentcrm_integration_status() {
-        $status = array(
-            'available' => $this->is_fluentcrm_available(),
-            'version' => $this->get_fluentcrm_version(),
-            'enabled' => get_option('emailit_fluentcrm_integration', 1),
-            'settings' => array(
-                'forward_bounces' => get_option('emailit_fluentcrm_forward_bounces', 1),
-                'suppress_default' => get_option('emailit_fluentcrm_suppress_default', 0),
-                'hard_bounce_action' => get_option('emailit_fluentcrm_hard_bounce_action', 'unsubscribe'),
-                'soft_bounce_action' => get_option('emailit_fluentcrm_soft_bounce_action', 'track'),
-                'soft_bounce_threshold' => get_option('emailit_fluentcrm_soft_bounce_threshold', 5),
-                'complaint_action' => get_option('emailit_fluentcrm_complaint_action', 'unsubscribe')
-            )
-        );
-
-        return $status;
-    }
 }

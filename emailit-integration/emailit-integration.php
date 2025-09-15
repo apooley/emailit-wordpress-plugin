@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.3.0
+ * Version: 2.4.0
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.3.0');
+define('EMAILIT_VERSION', '2.4.0');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -49,6 +49,8 @@ class Emailit_Integration {
     private $queue = null;
     private $webhook = null;
     private $admin = null;
+    private $db_optimizer = null;
+    private $query_optimizer = null;
 
     /**
      * Get plugin instance
@@ -198,6 +200,12 @@ class Emailit_Integration {
 
         // Always initialize admin interface (it will handle admin-only functionality internally)
         $this->admin = new Emailit_Admin($this->api, $this->logger, $this->queue);
+
+        // Initialize database optimizer
+        $this->db_optimizer = new Emailit_Database_Optimizer();
+        
+        // Initialize query optimizer
+        $this->query_optimizer = new Emailit_Query_Optimizer();
     }
 
     /**
@@ -359,17 +367,22 @@ class Emailit_Integration {
         $table_webhooks = $wpdb->prefix . 'emailit_webhook_logs';
         $sql_webhooks = "CREATE TABLE $table_webhooks (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            webhook_request_id varchar(255),
-            event_id varchar(255),
-            event_type varchar(100),
-            email_id varchar(255),
-            status varchar(50),
+            webhook_request_id varchar(255) DEFAULT NULL,
+            event_id varchar(255) DEFAULT NULL,
+            event_type varchar(100) DEFAULT NULL,
+            email_id varchar(255) DEFAULT NULL,
+            status varchar(50) DEFAULT NULL,
             details text,
             raw_payload longtext,
             processed_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY idx_email_id (email_id),
-            KEY idx_event_type (event_type)
+            KEY idx_event_type (event_type),
+            KEY idx_event_id (event_id),
+            KEY idx_status (status),
+            KEY idx_processed_at (processed_at),
+            KEY idx_webhook_request_id (webhook_request_id),
+            KEY idx_email_id_event_type (email_id, event_type)
         ) $charset_collate;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -390,6 +403,12 @@ class Emailit_Integration {
         if (version_compare($current_db_version, '2.0.0', '<')) {
             $this->migrate_to_2_0_0();
             update_option('emailit_db_version', '2.0.0');
+        }
+
+        // Migration for version 2.1.0 - Add performance indexes
+        if (version_compare($current_db_version, '2.1.0', '<')) {
+            $this->migrate_to_2_1_0();
+            update_option('emailit_db_version', '2.1.0');
         }
     }
 
@@ -415,6 +434,19 @@ class Emailit_Integration {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[Emailit] Added queue_id column to email logs table');
             }
+        }
+    }
+
+    /**
+     * Migrate database to version 2.1.0 - Add performance indexes
+     */
+    private function migrate_to_2_1_0() {
+        // Use database optimizer to add indexes
+        $db_optimizer = new Emailit_Database_Optimizer();
+        $indexes_added = $db_optimizer->add_performance_indexes();
+        
+        if (!empty($indexes_added)) {
+            error_log('[Emailit] Added performance indexes: ' . implode(', ', $indexes_added));
         }
     }
 
