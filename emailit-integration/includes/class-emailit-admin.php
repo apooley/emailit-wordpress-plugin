@@ -674,9 +674,13 @@ class Emailit_Admin {
             return;
         }
         
-        $health_status = $health_monitor->get_health_status();
-        $health_metrics = $health_monitor->get_health_metrics();
+        $health_status_response = $health_monitor->get_health_status();
+        $health_status = is_wp_error($health_status_response) ? array() : $health_status_response->get_data();
         
+        $health_metrics_response = $health_monitor->get_health_metrics();
+        $health_metrics = is_wp_error($health_metrics_response) ? array() : $health_metrics_response->get_data();
+        
+        // Pass health_monitor to the view
         include EMAILIT_PLUGIN_DIR . 'admin/views/health-monitor.php';
     }
 

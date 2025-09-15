@@ -416,45 +416,77 @@ class Emailit_Bounce_Classifier {
         $logs_table = $wpdb->prefix . 'emailit_logs';
         $start_date = date('Y-m-d H:i:s', strtotime("-{$days} days"));
         
-        // Get bounce statistics
-        $bounce_stats = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                bounce_classification,
-                bounce_category,
-                bounce_severity,
-                COUNT(*) as count,
-                AVG(bounce_confidence) as avg_confidence
-            FROM {$logs_table} 
-            WHERE bounce_classification IS NOT NULL 
-            AND created_at >= %s
-            GROUP BY bounce_classification, bounce_category, bounce_severity
-            ORDER BY count DESC
-        ", $start_date));
+        // Check if table exists
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return array(
+                'bounce_stats' => array(),
+                'severity_stats' => array(),
+                'daily_stats' => array()
+            );
+        }
+        
+        // Check if bounce classification columns exist
+        $columns = $wpdb->get_col("DESCRIBE {$logs_table}");
+        $bounce_columns = array('bounce_classification', 'bounce_category', 'bounce_severity', 'bounce_confidence');
+        $missing_columns = array_diff($bounce_columns, $columns);
+        
+        if (!empty($missing_columns)) {
+            // Return empty data if bounce classification columns don't exist yet
+            return array(
+                'bounce_stats' => array(),
+                'severity_stats' => array(),
+                'daily_stats' => array()
+            );
+        }
+        
+        try {
+            // Get bounce statistics
+            $bounce_stats = $wpdb->get_results($wpdb->prepare("
+                SELECT 
+                    bounce_classification,
+                    bounce_category,
+                    bounce_severity,
+                    COUNT(*) as count,
+                    AVG(bounce_confidence) as avg_confidence
+                FROM {$logs_table} 
+                WHERE bounce_classification IS NOT NULL 
+                AND created_at >= %s
+                GROUP BY bounce_classification, bounce_category, bounce_severity
+                ORDER BY count DESC
+            ", $start_date));
 
-        // Get total bounces by severity
-        $severity_stats = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                bounce_severity,
-                COUNT(*) as count
-            FROM {$logs_table} 
-            WHERE bounce_severity IS NOT NULL 
-            AND created_at >= %s
-            GROUP BY bounce_severity
-            ORDER BY count DESC
-        ", $start_date));
+            // Get total bounces by severity
+            $severity_stats = $wpdb->get_results($wpdb->prepare("
+                SELECT 
+                    bounce_severity,
+                    COUNT(*) as count
+                FROM {$logs_table} 
+                WHERE bounce_severity IS NOT NULL 
+                AND created_at >= %s
+                GROUP BY bounce_severity
+                ORDER BY count DESC
+            ", $start_date));
 
-        // Get recent bounce trends (last 7 days)
-        $trend_stats = $wpdb->get_results($wpdb->prepare("
-            SELECT 
-                DATE(created_at) as date,
-                bounce_classification,
-                COUNT(*) as count
-            FROM {$logs_table} 
-            WHERE bounce_classification IS NOT NULL 
-            AND created_at >= %s
-            GROUP BY DATE(created_at), bounce_classification
-            ORDER BY date DESC, count DESC
-        ", date('Y-m-d H:i:s', strtotime('-7 days'))));
+            // Get recent bounce trends (last 7 days)
+            $trend_stats = $wpdb->get_results($wpdb->prepare("
+                SELECT 
+                    DATE(created_at) as date,
+                    bounce_classification,
+                    COUNT(*) as count
+                FROM {$logs_table} 
+                WHERE bounce_classification IS NOT NULL 
+                AND created_at >= %s
+                GROUP BY DATE(created_at), bounce_classification
+                ORDER BY date DESC, count DESC
+            ", date('Y-m-d H:i:s', strtotime('-7 days'))));
+        } catch (Exception $e) {
+            // Return empty data if there's any error
+            return array(
+                'bounce_stats' => array(),
+                'severity_stats' => array(),
+                'daily_stats' => array()
+            );
+        }
 
         return array(
             'bounce_stats' => $bounce_stats,

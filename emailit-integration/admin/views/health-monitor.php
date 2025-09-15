@@ -12,11 +12,36 @@ if (!defined('ABSPATH')) {
 
 // Health status and metrics are passed from the admin callback
 // Get additional data if needed
-$health_metrics = $health_monitor->get_health_metrics();
+// Get health statistics with error handling
+try {
+    $health_stats = Emailit_Health_Migration::get_health_stats();
+} catch (Exception $e) {
+    $health_stats = array(
+        'health_checks' => array('total' => 0, 'successful' => 0, 'warnings' => 0, 'errors' => 0),
+        'alerts' => array('total' => 0, 'critical' => 0, 'warnings' => 0, 'dismissed' => 0)
+    );
+}
 
-// Get health statistics
-$health_stats = Emailit_Health_Migration::get_health_stats();
-$table_sizes = Emailit_Health_Migration::get_table_sizes();
+try {
+    $table_sizes = Emailit_Health_Migration::get_table_sizes();
+} catch (Exception $e) {
+    $table_sizes = array();
+}
+
+// Ensure we have valid data structures
+$health_status = isset($health_status) ? $health_status : array(
+    'overall' => 'unknown',
+    'checks' => array(),
+    'last_updated' => current_time('mysql'),
+    'alerts' => array()
+);
+
+$health_metrics = isset($health_metrics) ? $health_metrics : array(
+    'api_metrics' => array('recent' => array('avg_response_time' => 0)),
+    'email_metrics' => array('recent' => array('delivery_rate' => 0)),
+    'queue_metrics' => array('pending_emails' => 0),
+    'performance_metrics' => array('memory_usage' => array('current' => 0))
+);
 ?>
 
 <div class="wrap">
@@ -30,14 +55,15 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
             <div class="health-status-cards">
                 <div class="health-card overall-status">
                     <h3><?php _e('Overall Status', 'emailit-integration'); ?></h3>
-                    <div class="status-indicator status-<?php echo esc_attr($health_status['overall']); ?>">
+                    <div class="status-indicator status-<?php echo esc_attr(isset($health_status['overall']) ? $health_status['overall'] : 'unknown'); ?>">
                         <?php
-                        $status_icon = $health_status['overall'] === 'success' ? '✅' : 
-                                     ($health_status['overall'] === 'warning' ? '⚠️' : '🚨');
+                        $overall_status = isset($health_status['overall']) ? $health_status['overall'] : 'unknown';
+                        $status_icon = $overall_status === 'success' ? '✅' : 
+                                     ($overall_status === 'warning' ? '⚠️' : '🚨');
                         echo $status_icon;
                         ?>
                         <span class="status-text">
-                            <?php echo ucfirst(esc_html($health_status['overall'])); ?>
+                            <?php echo ucfirst(esc_html($overall_status)); ?>
                         </span>
                     </div>
                 </div>
@@ -45,14 +71,14 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                 <div class="health-card last-updated">
                     <h3><?php _e('Last Updated', 'emailit-integration'); ?></h3>
                     <div class="update-time">
-                        <?php echo esc_html($health_status['last_updated']); ?>
+                        <?php echo esc_html(isset($health_status['last_updated']) ? $health_status['last_updated'] : current_time('mysql')); ?>
                     </div>
                 </div>
                 
                 <div class="health-card active-alerts">
                     <h3><?php _e('Active Alerts', 'emailit-integration'); ?></h3>
                     <div class="alert-count">
-                        <?php echo count($health_status['alerts']); ?>
+                        <?php echo count(isset($health_status['alerts']) ? $health_status['alerts'] : array()); ?>
                     </div>
                 </div>
             </div>
@@ -63,23 +89,24 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
             <h2><?php _e('Health Checks', 'emailit-integration'); ?></h2>
             
             <div class="health-checks-grid">
-                <?php foreach ($health_status['checks'] as $check_type => $check): ?>
+                <?php foreach ((isset($health_status['checks']) ? $health_status['checks'] : array()) as $check_type => $check): ?>
                 <div class="health-check-card">
                     <div class="check-header">
                         <h4><?php echo esc_html(ucfirst(str_replace('_', ' ', $check_type))); ?></h4>
-                        <div class="check-status status-<?php echo esc_attr($check['status']); ?>">
+                        <div class="check-status status-<?php echo esc_attr(isset($check['status']) ? $check['status'] : 'unknown'); ?>">
                             <?php
-                            $icon = $check['status'] === 'success' ? '✅' : 
-                                   ($check['status'] === 'warning' ? '⚠️' : '🚨');
+                            $check_status = isset($check['status']) ? $check['status'] : 'unknown';
+                            $icon = $check_status === 'success' ? '✅' : 
+                                   ($check_status === 'warning' ? '⚠️' : '🚨');
                             echo $icon;
                             ?>
                         </div>
                     </div>
                     <div class="check-message">
-                        <?php echo esc_html($check['message']); ?>
+                        <?php echo esc_html(isset($check['message']) ? $check['message'] : 'No message available'); ?>
                     </div>
                     <div class="check-timestamp">
-                        <?php echo esc_html($check['timestamp']); ?>
+                        <?php echo esc_html(isset($check['timestamp']) ? $check['timestamp'] : current_time('mysql')); ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -94,7 +121,12 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                 <div class="metric-card">
                     <h3><?php _e('API Performance', 'emailit-integration'); ?></h3>
                     <div class="metric-value">
-                        <?php echo number_format($health_metrics['api_metrics']['recent']['avg_response_time'], 2); ?>s
+                        <?php 
+                        $response_time = isset($health_metrics['api_metrics']['recent']['avg_response_time']) 
+                            ? $health_metrics['api_metrics']['recent']['avg_response_time'] 
+                            : 0;
+                        echo number_format($response_time, 2); 
+                        ?>s
                     </div>
                     <div class="metric-label"><?php _e('Avg Response Time', 'emailit-integration'); ?></div>
                 </div>
@@ -102,7 +134,12 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                 <div class="metric-card">
                     <h3><?php _e('Email Delivery', 'emailit-integration'); ?></h3>
                     <div class="metric-value">
-                        <?php echo number_format($health_metrics['email_metrics']['recent']['delivery_rate'] * 100, 1); ?>%
+                        <?php 
+                        $delivery_rate = isset($health_metrics['email_metrics']['recent']['delivery_rate']) 
+                            ? $health_metrics['email_metrics']['recent']['delivery_rate'] 
+                            : 0;
+                        echo number_format($delivery_rate * 100, 1); 
+                        ?>%
                     </div>
                     <div class="metric-label"><?php _e('Delivery Rate', 'emailit-integration'); ?></div>
                 </div>
@@ -110,7 +147,12 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                 <div class="metric-card">
                     <h3><?php _e('Queue Status', 'emailit-integration'); ?></h3>
                     <div class="metric-value">
-                        <?php echo number_format($health_metrics['queue_metrics']['pending_emails']); ?>
+                        <?php 
+                        $pending_emails = isset($health_metrics['queue_metrics']['pending_emails']) 
+                            ? $health_metrics['queue_metrics']['pending_emails'] 
+                            : 0;
+                        echo number_format($pending_emails); 
+                        ?>
                     </div>
                     <div class="metric-label"><?php _e('Pending Emails', 'emailit-integration'); ?></div>
                 </div>
@@ -118,7 +160,12 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                 <div class="metric-card">
                     <h3><?php _e('Memory Usage', 'emailit-integration'); ?></h3>
                     <div class="metric-value">
-                        <?php echo number_format($health_metrics['performance_metrics']['memory_usage']['current'] / 1024 / 1024, 1); ?>MB
+                        <?php 
+                        $memory_usage = isset($health_metrics['performance_metrics']['memory_usage']['current']) 
+                            ? $health_metrics['performance_metrics']['memory_usage']['current'] 
+                            : 0;
+                        echo number_format($memory_usage / 1024 / 1024, 1); 
+                        ?>MB
                     </div>
                     <div class="metric-label"><?php _e('Current Usage', 'emailit-integration'); ?></div>
                 </div>
@@ -132,21 +179,21 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
             <div class="stats-grid">
                 <div class="stat-card">
                     <h3><?php _e('Health Checks', 'emailit-integration'); ?></h3>
-                    <div class="stat-value"><?php echo number_format($health_stats['health_checks']['total']); ?></div>
+                    <div class="stat-value"><?php echo number_format(isset($health_stats['health_checks']['total']) ? $health_stats['health_checks']['total'] : 0); ?></div>
                     <div class="stat-details">
-                        <span class="success"><?php echo number_format($health_stats['health_checks']['successful']); ?> <?php _e('Success', 'emailit-integration'); ?></span>
-                        <span class="warning"><?php echo number_format($health_stats['health_checks']['warnings']); ?> <?php _e('Warnings', 'emailit-integration'); ?></span>
-                        <span class="error"><?php echo number_format($health_stats['health_checks']['errors']); ?> <?php _e('Errors', 'emailit-integration'); ?></span>
+                        <span class="success"><?php echo number_format(isset($health_stats['health_checks']['successful']) ? $health_stats['health_checks']['successful'] : 0); ?> <?php _e('Success', 'emailit-integration'); ?></span>
+                        <span class="warning"><?php echo number_format(isset($health_stats['health_checks']['warnings']) ? $health_stats['health_checks']['warnings'] : 0); ?> <?php _e('Warnings', 'emailit-integration'); ?></span>
+                        <span class="error"><?php echo number_format(isset($health_stats['health_checks']['errors']) ? $health_stats['health_checks']['errors'] : 0); ?> <?php _e('Errors', 'emailit-integration'); ?></span>
                     </div>
                 </div>
                 
                 <div class="stat-card">
                     <h3><?php _e('Alerts', 'emailit-integration'); ?></h3>
-                    <div class="stat-value"><?php echo number_format($health_stats['alerts']['total']); ?></div>
+                    <div class="stat-value"><?php echo number_format(isset($health_stats['alerts']['total']) ? $health_stats['alerts']['total'] : 0); ?></div>
                     <div class="stat-details">
-                        <span class="critical"><?php echo number_format($health_stats['alerts']['critical']); ?> <?php _e('Critical', 'emailit-integration'); ?></span>
-                        <span class="warning"><?php echo number_format($health_stats['alerts']['warnings']); ?> <?php _e('Warnings', 'emailit-integration'); ?></span>
-                        <span class="dismissed"><?php echo number_format($health_stats['alerts']['dismissed']); ?> <?php _e('Dismissed', 'emailit-integration'); ?></span>
+                        <span class="critical"><?php echo number_format(isset($health_stats['alerts']['critical']) ? $health_stats['alerts']['critical'] : 0); ?> <?php _e('Critical', 'emailit-integration'); ?></span>
+                        <span class="warning"><?php echo number_format(isset($health_stats['alerts']['warnings']) ? $health_stats['alerts']['warnings'] : 0); ?> <?php _e('Warnings', 'emailit-integration'); ?></span>
+                        <span class="dismissed"><?php echo number_format(isset($health_stats['alerts']['dismissed']) ? $health_stats['alerts']['dismissed'] : 0); ?> <?php _e('Dismissed', 'emailit-integration'); ?></span>
                     </div>
                 </div>
                 
@@ -155,15 +202,23 @@ $table_sizes = Emailit_Health_Migration::get_table_sizes();
                     <div class="stat-value">
                         <?php
                         $total_size = 0;
-                        foreach ($table_sizes as $table => $size) {
-                            $total_size += $size['size_mb'];
+                        if (is_array($table_sizes)) {
+                            foreach ($table_sizes as $table => $size) {
+                                if (isset($size['size_mb'])) {
+                                    $total_size += $size['size_mb'];
+                                }
+                            }
                         }
                         echo number_format($total_size, 2); ?>MB
                     </div>
                     <div class="stat-details">
-                        <?php foreach ($table_sizes as $table => $size): ?>
-                        <span><?php echo esc_html($table); ?>: <?php echo number_format($size['size_mb'], 2); ?>MB</span>
-                        <?php endforeach; ?>
+                        <?php if (is_array($table_sizes)): ?>
+                            <?php foreach ($table_sizes as $table => $size): ?>
+                                <span><?php echo esc_html($table); ?>: <?php echo number_format(isset($size['size_mb']) ? $size['size_mb'] : 0, 2); ?>MB</span>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <span><?php _e('No data available', 'emailit-integration'); ?></span>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

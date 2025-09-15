@@ -6,7 +6,7 @@ This document provides a detailed breakdown of the FluentCRM integration roadmap
 
 ## 📊 **Current Status**
 - **Integration Status**: Phase 1 - Action Mapping & Soft Bounce Management Complete
-- **Core Plugin Version**: 2.6.1
+- **Core Plugin Version**: 2.6.2
 - **FluentCRM Compatibility**: 2.9.65+ (tested), 2.0+ (compatible)
 - **Bounce Classification**: ✅ Fully Implemented (Available to all users)
 - **Action Mapping**: ✅ Fully Implemented (FluentCRM-specific)

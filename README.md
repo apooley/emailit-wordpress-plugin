@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.6.1-green.svg)
+![Version](https://img.shields.io/badge/Version-2.6.2-green.svg)
 
 ## 📁 Repository Contents
 
@@ -78,7 +78,14 @@ For detailed installation instructions, configuration options, troubleshooting, 
 
 ## 📄 **License**
 
-## 🆕 Latest Features (Version 2.6.1)
+## 🆕 Latest Features (Version 2.6.2)
+
+### 🐛 **Health Monitor Bug Fix**
+- **Fixed Queue Table Column Error**: Resolved "Unknown column 'updated_at'" error in health monitor queue processing check
+- **Enhanced Queue Health Check**: Added proper table existence validation and error handling for queue health monitoring
+- **Improved Error Handling**: Added try-catch blocks and graceful fallbacks for database query failures in health checks
+
+## 🆕 Previous Features (Version 2.6.1)
 
 ### 🐛 **Critical Bug Fixes & Stability Improvements**
 - **Fixed Health Monitor Critical Errors**: Resolved E_ERROR in health monitor page

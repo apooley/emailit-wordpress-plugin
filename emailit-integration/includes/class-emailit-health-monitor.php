@@ -337,16 +337,38 @@ class Emailit_Health_Monitor {
 
         $queue_table = $wpdb->prefix . 'emailit_queue';
         
-        // Get queue statistics
-        $total_pending = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'pending'");
-        $total_processing = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'processing'");
-        $total_failed = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'failed'");
+        // Check if table exists
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$queue_table}'")) {
+            return array(
+                'check_type' => 'queue_processing',
+                'status' => 'warning',
+                'message' => 'Queue table does not exist',
+                'data' => array(),
+                'timestamp' => current_time('mysql')
+            );
+        }
         
-        // Check for stuck emails (processing for more than 1 hour)
-        $stuck_emails = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$queue_table} WHERE status = 'processing' AND updated_at < %s",
-            date('Y-m-d H:i:s', time() - 3600)
-        ));
+        try {
+            // Get queue statistics
+            $total_pending = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'pending'");
+            $total_processing = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'processing'");
+            $total_failed = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'failed'");
+            
+            // Check for stuck emails (processing for more than 1 hour)
+            // Use created_at since updated_at doesn't exist in the queue table
+            $stuck_emails = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$queue_table} WHERE status = 'processing' AND created_at < %s",
+                date('Y-m-d H:i:s', time() - 3600)
+            ));
+        } catch (Exception $e) {
+            return array(
+                'check_type' => 'queue_processing',
+                'status' => 'error',
+                'message' => 'Failed to query queue table: ' . $e->getMessage(),
+                'data' => array(),
+                'timestamp' => current_time('mysql')
+            );
+        }
 
         $status = 'success';
         $issues = array();

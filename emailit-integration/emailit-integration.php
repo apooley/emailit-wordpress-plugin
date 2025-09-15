@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.6.1
+ * Version: 2.6.2
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.6.1');
+define('EMAILIT_VERSION', '2.6.2');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -229,6 +229,9 @@ class Emailit_Integration {
 
         // Initialize advanced error handling
         $this->init_advanced_error_handling();
+        
+        // Add bounce classification columns if needed
+        $this->add_bounce_classification_columns();
     }
 
     /**
@@ -275,6 +278,58 @@ class Emailit_Integration {
      */
     public function cleanup_error_data() {
         Emailit_Error_Migration::cleanup_old_data();
+    }
+
+    /**
+     * Add bounce classification columns to logs table
+     */
+    private function add_bounce_classification_columns() {
+        global $wpdb;
+        
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        
+        // Check if table exists
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return;
+        }
+        
+        // Check if columns already exist
+        $columns = $wpdb->get_col("DESCRIBE {$logs_table}");
+        
+        $columns_to_add = array(
+            'bounce_classification' => 'varchar(50) DEFAULT NULL',
+            'bounce_category' => 'varchar(50) DEFAULT NULL', 
+            'bounce_severity' => 'varchar(20) DEFAULT NULL',
+            'bounce_confidence' => 'decimal(3,2) DEFAULT NULL',
+            'bounce_reason' => 'text DEFAULT NULL',
+            'bounce_technical_hints' => 'text DEFAULT NULL',
+            'bounce_recommended_action' => 'varchar(100) DEFAULT NULL'
+        );
+        
+        foreach ($columns_to_add as $column_name => $column_definition) {
+            if (!in_array($column_name, $columns)) {
+                $wpdb->query("ALTER TABLE {$logs_table} ADD COLUMN {$column_name} {$column_definition}");
+            }
+        }
+        
+        // Add indexes for bounce classification columns
+        $indexes_to_add = array(
+            'idx_bounce_classification' => 'bounce_classification',
+            'idx_bounce_category' => 'bounce_category',
+            'idx_bounce_severity' => 'bounce_severity'
+        );
+        
+        foreach ($indexes_to_add as $index_name => $column_name) {
+            // Check if index already exists
+            $index_exists = $wpdb->get_var($wpdb->prepare(
+                "SHOW INDEX FROM {$logs_table} WHERE Key_name = %s",
+                $index_name
+            ));
+            
+            if (!$index_exists) {
+                $wpdb->query("CREATE INDEX {$index_name} ON {$logs_table} ({$column_name})");
+            }
+        }
     }
 
     /**
@@ -391,6 +446,9 @@ class Emailit_Integration {
         
         // Create error handling tables safely
         Emailit_Error_Migration::safe_init();
+        
+        // Add bounce classification columns to logs table
+        $this->add_bounce_classification_columns();
 
         // Set default options
         $this->set_default_options();

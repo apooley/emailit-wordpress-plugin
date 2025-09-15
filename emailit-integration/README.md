@@ -1,8 +1,15 @@
 # Emailit Integration for WordPress
 
-**Version 2.6.1** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
+**Version 2.6.2** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.6.2 - Health Monitor Bug Fix
+
+#### 🐛 **Health Monitor Fixes**
+- **Fixed Queue Table Column Error**: Resolved "Unknown column 'updated_at'" error in health monitor queue processing check
+- **Enhanced Queue Health Check**: Added proper table existence validation and error handling for queue health monitoring
+- **Improved Error Handling**: Added try-catch blocks and graceful fallbacks for database query failures in health checks
 
 ### Version 2.6.1 - Critical Bug Fixes & Stability Improvements
 
