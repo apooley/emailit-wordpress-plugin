@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.5.0-green.svg)
+![Version](https://img.shields.io/badge/Version-2.6.0-green.svg)
 
 ## 📁 Repository Contents
 
@@ -15,6 +15,7 @@ The complete WordPress plugin with enterprise-grade email functionality:
 - **FluentCRM integration** for advanced bounce handling and CRM synchronization
 - **Real-time webhook tracking** with optional webhook listening
 - **Queue system** for bulk email processing
+- **Advanced error handling** with circuit breaker and intelligent retry mechanisms
 - **Professional admin interface** with modern UI design
 - **Enterprise security features** including encrypted API key storage
 
@@ -33,6 +34,7 @@ The Emailit Integration plugin transforms WordPress email delivery with:
 - **🤝 FluentCRM Integration**: Automatic bounce handling and CRM synchronization
 - **📊 Real-time Tracking**: Webhook-based email status updates (delivered, bounced, etc.)
 - **⚡ Queue System**: Background processing for bulk emails
+- **🛡️ Advanced Error Handling**: Circuit breaker, intelligent retry, and error analytics
 - **🎨 Modern Admin Interface**: Professional dashboard with enhanced UX
 - **🔒 Enterprise Security**: Encrypted API keys and comprehensive input validation
 - **🛡️ Fallback System**: Automatic failover to wp_mail() if API fails
@@ -75,6 +77,25 @@ For detailed installation instructions, configuration options, troubleshooting, 
 - **Support**: GitHub Issues
 
 ## 📄 **License**
+
+## 🆕 Latest Features (Version 2.6.0)
+
+### 🛡️ **Advanced Error Handling System**
+- **Circuit Breaker Protection**: Automatic failure detection and recovery mechanisms
+- **Intelligent Retry System**: Exponential backoff with jitter for failed operations
+- **Error Analytics**: Pattern detection, trend analysis, and anomaly detection
+- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack alerts
+- **Error Recovery**: Automated recovery strategies for different error types
+- **Debugging Tools**: Enhanced troubleshooting and error insights
+
+### 📊 **Production-Ready Reliability**
+- **Cascading Failure Prevention**: Prevents system-wide failures during outages
+- **Self-Healing Mechanisms**: Automatic recovery from transient errors
+- **Comprehensive Monitoring**: Real-time error statistics and health metrics
+- **Data Retention**: Configurable error data cleanup and archiving
+- **Performance Optimization**: Efficient error tracking and storage
+
+---
 
 This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) file for details.
 

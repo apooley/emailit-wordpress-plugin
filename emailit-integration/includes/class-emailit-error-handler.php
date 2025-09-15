@@ -18,6 +18,21 @@ class Emailit_Error_Handler {
     private $logger;
 
     /**
+     * Error analytics instance
+     */
+    private $error_analytics;
+
+    /**
+     * Retry manager instance
+     */
+    private $retry_manager;
+
+    /**
+     * Error notifications instance
+     */
+    private $error_notifications;
+
+    /**
      * Error codes and recovery strategies
      */
     private $error_strategies = array();
@@ -43,6 +58,27 @@ class Emailit_Error_Handler {
     public function __construct($logger = null) {
         $this->logger = $logger;
         $this->init_error_strategies();
+        $this->init_advanced_error_handling();
+    }
+
+    /**
+     * Initialize advanced error handling components
+     */
+    private function init_advanced_error_handling() {
+        // Initialize error analytics
+        if (class_exists('Emailit_Error_Analytics')) {
+            $this->error_analytics = new Emailit_Error_Analytics($this->logger);
+        }
+
+        // Initialize retry manager
+        if (class_exists('Emailit_Retry_Manager')) {
+            $this->retry_manager = new Emailit_Retry_Manager($this->logger);
+        }
+
+        // Initialize error notifications
+        if (class_exists('Emailit_Error_Notifications')) {
+            $this->error_notifications = new Emailit_Error_Notifications($this->logger);
+        }
     }
 
     /**
@@ -130,6 +166,13 @@ class Emailit_Error_Handler {
             $this->error_strategies[$error_code] :
             $this->get_default_strategy();
 
+        // Track error in analytics
+        if ($this->error_analytics) {
+            $this->error_analytics->track_error($error_code, $error_message, array_merge($context, array(
+                'level' => $strategy['level']
+            )));
+        }
+
         // Log error with context
         $this->log_error($error_code, $error_message, $strategy['level'], $context);
 
@@ -149,14 +192,34 @@ class Emailit_Error_Handler {
         // Update circuit breaker
         $this->update_circuit_breaker($error_code, $strategy['level']);
 
-        // Trigger admin notifications if needed
-        if ($strategy['level'] === 'critical') {
-            $this->trigger_admin_notification($error_code, $strategy['message'], $context);
+        // Handle retry logic
+        $retry_result = null;
+        if (in_array($strategy['action'], array('retry', 'delay_retry')) && $this->retry_manager) {
+            $retry_result = $this->retry_manager->execute_retry(
+                $context['operation'] ?? null,
+                $error_code,
+                $context
+            );
+        }
+
+        // Trigger notifications
+        if ($this->error_notifications) {
+            if ($strategy['level'] === 'critical') {
+                $this->error_notifications->handle_critical_error($error_code, $error_message, $context);
+            } else {
+                $this->error_notifications->handle_error_notification($error_code, $error_message, $context);
+            }
+        } else {
+            // Fallback to old notification system
+            if ($strategy['level'] === 'critical') {
+                $this->trigger_admin_notification($error_code, $strategy['message'], $context);
+            }
         }
 
         return array(
             'strategy' => $strategy,
             'recovery_result' => $recovery_result,
+            'retry_result' => $retry_result,
             'should_retry' => in_array($strategy['action'], array('retry', 'delay_retry'))
         );
     }
@@ -460,5 +523,74 @@ class Emailit_Error_Handler {
         delete_option('emailit_circuit_breaker_active');
         delete_option('emailit_api_disabled_until');
         delete_option('emailit_quota_exceeded');
+    }
+
+    /**
+     * Get error analytics summary
+     */
+    public function get_error_analytics() {
+        if ($this->error_analytics) {
+            return $this->error_analytics->get_analytics_summary();
+        }
+        return null;
+    }
+
+    /**
+     * Get error statistics
+     */
+    public function get_error_statistics($period = '24h') {
+        if ($this->error_analytics) {
+            return $this->error_analytics->get_error_statistics($period);
+        }
+        return null;
+    }
+
+    /**
+     * Get retry statistics
+     */
+    public function get_retry_statistics() {
+        if ($this->retry_manager) {
+            return $this->retry_manager->get_retry_statistics();
+        }
+        return null;
+    }
+
+    /**
+     * Get notification statistics
+     */
+    public function get_notification_statistics() {
+        if ($this->error_notifications) {
+            return $this->error_notifications->get_notification_statistics();
+        }
+        return null;
+    }
+
+    /**
+     * Get comprehensive error handling status
+     */
+    public function get_error_handling_status() {
+        return array(
+            'circuit_breaker' => array(
+                'is_open' => $this->is_circuit_breaker_open(),
+                'status' => $this->get_circuit_breaker_status()
+            ),
+            'analytics' => $this->get_error_analytics(),
+            'statistics' => $this->get_error_statistics(),
+            'retry_stats' => $this->get_retry_statistics(),
+            'notification_stats' => $this->get_notification_statistics()
+        );
+    }
+
+    /**
+     * Get circuit breaker status
+     */
+    public function get_circuit_breaker_status() {
+        $breaker_data = get_transient($this->circuit_breaker_key);
+        
+        if (!$breaker_data) {
+            return 'closed';
+        }
+        
+        return $breaker_data['status'];
     }
 }

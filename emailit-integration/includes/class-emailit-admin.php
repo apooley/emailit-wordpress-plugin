@@ -83,6 +83,11 @@ class Emailit_Admin {
             add_action('wp_ajax_emailit_get_subscriber_bounce_details', array($this, 'ajax_get_subscriber_bounce_details'));
         }
 
+        // Health monitoring AJAX handlers
+        add_action('wp_ajax_emailit_health_check', array($this, 'ajax_health_check'));
+        add_action('wp_ajax_emailit_cleanup_health_data', array($this, 'ajax_cleanup_health_data'));
+        add_action('wp_ajax_emailit_optimize_health_tables', array($this, 'ajax_optimize_health_tables'));
+
         // Add admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
 
@@ -121,6 +126,16 @@ class Emailit_Admin {
             'manage_options',
             $this->logs_page,
             array($this, 'logs_page_callback')
+        );
+
+        // Health Monitor submenu
+        add_submenu_page(
+            'tools.php',
+            __('Emailit Health Monitor', 'emailit-integration'),
+            __('Emailit Health Monitor', 'emailit-integration'),
+            'manage_options',
+            'emailit-health-monitor',
+            array($this, 'health_monitor_page_callback')
         );
 
     }
@@ -357,6 +372,14 @@ class Emailit_Admin {
             );
         }
 
+        // Error handling section
+        add_settings_section(
+            'emailit_error_handling_section',
+            __('Advanced Error Handling', 'emailit-integration'),
+            array($this, 'error_handling_section_callback'),
+            'emailit-settings'
+        );
+
         // Add settings fields
         $this->add_settings_fields();
     }
@@ -591,6 +614,39 @@ class Emailit_Admin {
                 'emailit_fluentcrm_section'
             );
         }
+
+        // Error handling fields
+        add_settings_field(
+            'emailit_error_analytics_enabled',
+            __('Error Analytics', 'emailit-integration'),
+            array($this, 'error_analytics_enabled_field_callback'),
+            'emailit-settings',
+            'emailit_error_handling_section'
+        );
+
+        add_settings_field(
+            'emailit_retry_enabled',
+            __('Automatic Retry', 'emailit-integration'),
+            array($this, 'retry_enabled_field_callback'),
+            'emailit-settings',
+            'emailit_error_handling_section'
+        );
+
+        add_settings_field(
+            'emailit_error_notifications_enabled',
+            __('Error Notifications', 'emailit-integration'),
+            array($this, 'error_notifications_enabled_field_callback'),
+            'emailit-settings',
+            'emailit_error_handling_section'
+        );
+
+        add_settings_field(
+            'emailit_circuit_breaker_enabled',
+            __('Circuit Breaker', 'emailit-integration'),
+            array($this, 'circuit_breaker_enabled_field_callback'),
+            'emailit-settings',
+            'emailit_error_handling_section'
+        );
     }
 
     /**
@@ -605,6 +661,13 @@ class Emailit_Admin {
      */
     public function logs_page_callback() {
         include EMAILIT_PLUGIN_DIR . 'admin/views/logs.php';
+    }
+
+    /**
+     * Health Monitor page callback
+     */
+    public function health_monitor_page_callback() {
+        include EMAILIT_PLUGIN_DIR . 'admin/views/health-monitor.php';
     }
 
     /**
@@ -644,6 +707,26 @@ class Emailit_Admin {
             echo '<div class="notice notice-success inline"><p><strong>' . __('FluentCRM Detected', 'emailit-integration') . '</strong> - ' . sprintf(__('Version %s is active and ready for integration.', 'emailit-integration'), $fluentcrm_status['version']) . '</p></div>';
         } else {
             echo '<div class="notice notice-warning inline"><p><strong>' . __('FluentCRM Not Detected', 'emailit-integration') . '</strong> - ' . __('Install and activate FluentCRM to enable advanced email management features.', 'emailit-integration') . '</p></div>';
+        }
+    }
+
+    public function error_handling_section_callback() {
+        echo '<p>' . __('Configure advanced error handling, retry mechanisms, and notification systems for improved reliability.', 'emailit-integration') . '</p>';
+        
+        // Get error handling status
+        $error_handler = emailit_get_component('error_handler');
+        if ($error_handler) {
+            $status = $error_handler->get_error_handling_status();
+            echo '<div class="error-handling-status">';
+            echo '<h4>' . __('Error Handling Status', 'emailit-integration') . '</h4>';
+            echo '<ul>';
+            echo '<li><strong>' . __('Circuit Breaker:', 'emailit-integration') . '</strong> ' . ucfirst($status['circuit_breaker']['status']) . '</li>';
+            if ($status['statistics']) {
+                echo '<li><strong>' . __('Total Errors (24h):', 'emailit-integration') . '</strong> ' . $status['statistics']['total_errors'] . '</li>';
+                echo '<li><strong>' . __('Resolution Rate:', 'emailit-integration') . '</strong> ' . round($status['statistics']['resolution_rate'], 1) . '%</li>';
+            }
+            echo '</ul>';
+            echo '</div>';
         }
     }
 
@@ -946,6 +1029,41 @@ class Emailit_Admin {
         
         echo '<input type="number" id="emailit_fluentcrm_soft_bounce_history_limit" name="emailit_fluentcrm_soft_bounce_history_limit" value="' . esc_attr($value) . '" min="5" max="50" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo '<p class="description">' . __('Maximum number of bounce records to keep in history per subscriber (5-50).', 'emailit-integration') . '</p>';
+    }
+
+    /**
+     * Error handling field callbacks
+     */
+    public function error_analytics_enabled_field_callback() {
+        $value = get_option('emailit_error_analytics_enabled', true);
+        
+        echo '<input type="checkbox" id="emailit_error_analytics_enabled" name="emailit_error_analytics_enabled" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_error_analytics_enabled">' . __('Enable error analytics and pattern detection', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Track error patterns, trends, and correlations to help identify and prevent issues.', 'emailit-integration') . '</p>';
+    }
+
+    public function retry_enabled_field_callback() {
+        $value = get_option('emailit_retry_enabled', true);
+        
+        echo '<input type="checkbox" id="emailit_retry_enabled" name="emailit_retry_enabled" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_retry_enabled">' . __('Enable automatic retry for failed operations', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Automatically retry failed API calls with exponential backoff and intelligent retry strategies.', 'emailit-integration') . '</p>';
+    }
+
+    public function error_notifications_enabled_field_callback() {
+        $value = get_option('emailit_error_notifications_enabled', true);
+        
+        echo '<input type="checkbox" id="emailit_error_notifications_enabled" name="emailit_error_notifications_enabled" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_error_notifications_enabled">' . __('Enable error notifications and alerts', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Send email notifications and admin alerts for critical errors and system issues.', 'emailit-integration') . '</p>';
+    }
+
+    public function circuit_breaker_enabled_field_callback() {
+        $value = get_option('emailit_circuit_breaker_enabled', true);
+        
+        echo '<input type="checkbox" id="emailit_circuit_breaker_enabled" name="emailit_circuit_breaker_enabled" value="1"' . checked(1, $value, false) . ' />';
+        echo ' <label for="emailit_circuit_breaker_enabled">' . __('Enable circuit breaker protection', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Automatically disable API calls when too many failures occur to prevent cascading failures.', 'emailit-integration') . '</p>';
     }
 
     /**
@@ -2218,5 +2336,62 @@ class Emailit_Admin {
     </table>
 </body>
 </html>';
+    }
+
+    /**
+     * AJAX handler for health check
+     */
+    public function ajax_health_check() {
+        check_ajax_referer('emailit_health_check', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $health_monitor = new Emailit_Health_Monitor($this->logger);
+            $result = $health_monitor->trigger_manual_check(new WP_REST_Request('POST', '/emailit/v1/health/check'));
+            
+            if (is_wp_error($result)) {
+                wp_send_json_error(array('message' => $result->get_error_message()));
+            } else {
+                wp_send_json_success(array('message' => __('Health check completed successfully.', 'emailit-integration')));
+            }
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
+    }
+
+    /**
+     * AJAX handler for cleaning up health data
+     */
+    public function ajax_cleanup_health_data() {
+        check_ajax_referer('emailit_cleanup_health_data', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            Emailit_Health_Migration::cleanup_old_data();
+            wp_send_json_success(array('message' => __('Old health data cleaned up successfully.', 'emailit-integration')));
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
+    }
+
+    /**
+     * AJAX handler for optimizing health tables
+     */
+    public function ajax_optimize_health_tables() {
+        check_ajax_referer('emailit_optimize_health_tables', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            Emailit_Health_Migration::optimize_tables();
+            wp_send_json_success(array('message' => __('Health monitoring tables optimized successfully.', 'emailit-integration')));
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
     }
 }

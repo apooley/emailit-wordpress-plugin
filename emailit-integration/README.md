@@ -1,8 +1,41 @@
 # Emailit Integration for WordPress
 
-**Version 2.5.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, and a complete admin interface with enterprise-grade security.
+**Version 2.6.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.6.0 - Advanced Error Handling System
+
+### 🛡️ **Advanced Error Handling & Recovery**
+- **Enhanced Circuit Breaker**: Improved failure detection and automatic recovery mechanisms
+- **Intelligent Retry System**: Advanced retry mechanisms with exponential backoff and jitter
+- **Error Analytics**: Comprehensive error tracking, pattern detection, and trend analysis
+- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack integration
+- **Error Recovery**: Automated recovery strategies for different error types
+- **Debugging Tools**: Enhanced debugging and troubleshooting capabilities
+
+### 📊 **Error Analytics & Monitoring**
+- **Pattern Detection**: Automatic detection of error patterns and correlations
+- **Trend Analysis**: Real-time error trend monitoring and anomaly detection
+- **Frequency Monitoring**: High-frequency error detection and alerting
+- **Error Insights**: Intelligent recommendations based on error analysis
+- **Performance Metrics**: Error resolution rates and response time tracking
+
+### 🔧 **Admin Interface Enhancements**
+- **Error Handling Settings**: New "Advanced Error Handling" settings section
+- **Real-time Status**: Live error handling status and circuit breaker state
+- **Error Statistics**: Comprehensive error statistics and insights dashboard
+- **Configuration Options**: Granular control over error handling behavior
+- **Notification Settings**: Configurable notification channels and preferences
+
+### ⚡ **Production Reliability**
+- **Cascading Failure Prevention**: Circuit breaker prevents system-wide failures
+- **Automatic Recovery**: Self-healing mechanisms for transient errors
+- **Data Retention**: Configurable error data retention and cleanup
+- **Memory Optimization**: Efficient error tracking and storage
+- **Cron Integration**: Automated error analysis and cleanup processes
+
+---
 
 ### Version 2.5.0 - FluentCRM Action Mapping & Soft Bounce Management
 
@@ -506,6 +539,50 @@ define('WP_DEBUG_LOG', true);
 - **Transient Usage**: WordPress transients for temporary data storage
 - **Memory Management**: Efficient memory usage for large email batches
 
+## Advanced Error Handling
+
+### Circuit Breaker Protection
+- **Automatic Failure Detection**: Monitors consecutive failures and triggers circuit breaker
+- **Configurable Thresholds**: Customizable failure limits and timeout periods
+- **Automatic Recovery**: Self-healing mechanisms that restore service when conditions improve
+- **Status Monitoring**: Real-time circuit breaker status in admin interface
+- **Cascading Failure Prevention**: Prevents system-wide failures during API outages
+
+### Intelligent Retry System
+- **Exponential Backoff**: Smart retry delays that increase with each attempt
+- **Jitter Implementation**: Random delay variation to prevent thundering herd problems
+- **Error-Specific Strategies**: Different retry approaches for different error types
+- **Retry Scheduling**: WordPress cron-based retry scheduling for failed operations
+- **Retry Analytics**: Comprehensive tracking of retry success rates and patterns
+
+### Error Analytics & Pattern Detection
+- **Real-time Error Tracking**: Comprehensive error logging with context and metadata
+- **Pattern Recognition**: Automatic detection of recurring error patterns and correlations
+- **Trend Analysis**: Historical error trend monitoring and anomaly detection
+- **Frequency Monitoring**: High-frequency error detection with automatic alerting
+- **Error Insights**: Intelligent recommendations based on error analysis and patterns
+
+### Multi-Channel Notifications
+- **Email Notifications**: Rich HTML email alerts for critical errors and system issues
+- **Admin Notices**: Real-time WordPress admin notices with dismissible alerts
+- **Webhook Integration**: External system notifications via configurable webhooks
+- **Slack Integration**: Direct Slack notifications for development and monitoring teams
+- **Escalation Management**: Automatic escalation for unresolved critical errors
+
+### Error Recovery Strategies
+- **Automated Recovery**: Self-healing mechanisms for transient and recoverable errors
+- **Context-Aware Handling**: Error-specific recovery strategies based on error type and context
+- **Recovery Tracking**: Comprehensive logging of recovery attempts and outcomes
+- **Fallback Mechanisms**: Graceful degradation when primary systems fail
+- **Health Monitoring**: Integration with health monitoring system for proactive issue detection
+
+### Debugging & Troubleshooting
+- **Enhanced Error Context**: Detailed error information including stack traces and context
+- **Error Statistics Dashboard**: Real-time error metrics and resolution rates
+- **Pattern Analysis**: Visual representation of error patterns and trends
+- **Debug Tools**: Comprehensive debugging utilities for development and troubleshooting
+- **Error History**: Complete audit trail of all error events and recovery attempts
+
 ## Compatibility
 
 ### Tested With
@@ -659,6 +736,12 @@ add_filter('emailit_queue_batch_size', 'custom_batch_size', 10, 1);
 // Database optimization filters
 add_filter('emailit_query_cache_duration', 'custom_cache_duration', 10, 1);
 add_filter('emailit_database_optimization_settings', 'custom_optimization_settings', 10, 1);
+
+// Error handling filters
+add_filter('emailit_should_send_notification', 'custom_notification_logic', 10, 3);
+add_filter('emailit_retry_strategy', 'custom_retry_strategy', 10, 2);
+add_filter('emailit_error_context', 'add_custom_error_context', 10, 2);
+add_filter('emailit_circuit_breaker_threshold', 'custom_circuit_breaker_threshold', 10, 1);
 ```
 
 ### Actions
@@ -684,6 +767,18 @@ add_action('emailit_queue_failed', 'queue_failed', 10, 2);
 add_action('emailit_database_optimized', 'database_optimized', 10, 1);
 add_action('emailit_indexes_added', 'indexes_added', 10, 1);
 add_action('emailit_cache_cleared', 'cache_cleared', 10, 1);
+
+// Error handling events
+add_action('emailit_error_occurred', 'handle_error_event', 10, 3);
+add_action('emailit_critical_error', 'handle_critical_error', 10, 3);
+add_action('emailit_error_escalation', 'handle_error_escalation', 10, 2);
+add_action('emailit_high_frequency_error', 'handle_high_frequency_error', 10, 2);
+add_action('emailit_error_anomaly_detected', 'handle_error_anomaly', 10, 1);
+add_action('emailit_circuit_breaker_opened', 'handle_circuit_breaker_opened', 10, 1);
+add_action('emailit_circuit_breaker_closed', 'handle_circuit_breaker_closed', 10, 1);
+add_action('emailit_retry_scheduled', 'handle_retry_scheduled', 10, 3);
+add_action('emailit_retry_completed', 'handle_retry_completed', 10, 3);
+add_action('emailit_retry_failed', 'handle_retry_failed', 10, 3);
 ```
 
 ## Troubleshooting
@@ -759,7 +854,341 @@ For support, bug reports, and feature requests:
 - WordPress Support Forum: Plugin support forum
 - Developer Contact: Direct developer support for critical issues
 
+## Developer Reference
+
+### Hooks and Filters
+
+The Emailit Integration plugin provides extensive hooks and filters for developers to customize behavior and integrate with other plugins.
+
+#### **Action Hooks**
+
+##### **Email Processing Events**
+```php
+// Before email is sent via Emailit API
+add_action('emailit_before_send', 'my_before_send_handler', 10, 1);
+function my_before_send_handler($email_data) {
+    // Modify email data before sending
+    error_log('Sending email: ' . $email_data['to']);
+}
+
+// After email is sent successfully
+add_action('emailit_after_send', 'my_after_send_handler', 10, 3);
+function my_after_send_handler($email_data, $response, $message_id) {
+    // Handle successful email sending
+    error_log('Email sent successfully: ' . $message_id);
+}
+
+// When email sending fails
+add_action('emailit_send_failed', 'my_send_failed_handler', 10, 3);
+function my_send_failed_handler($email_data, $error, $context) {
+    // Handle email sending failures
+    error_log('Email send failed: ' . $error->get_error_message());
+}
+```
+
+##### **Webhook Events**
+```php
+// When webhook is received
+add_action('emailit_webhook_received', 'my_webhook_handler', 10, 2);
+function my_webhook_handler($webhook_data, $signature_valid) {
+    // Process webhook data
+    if ($signature_valid) {
+        error_log('Valid webhook received: ' . $webhook_data['event']);
+    }
+}
+
+// When email status is updated via webhook
+add_action('emailit_status_updated', 'my_status_updated_handler', 10, 3);
+function my_status_updated_handler($message_id, $status, $webhook_data) {
+    // Handle status updates
+    error_log("Email {$message_id} status updated to: {$status}");
+}
+```
+
+##### **Queue Processing Events**
+```php
+// When queue batch is processed
+add_action('emailit_queue_processed', 'my_queue_processed_handler', 10, 2);
+function my_queue_processed_handler($batch_size, $processed_count) {
+    // Handle queue processing completion
+    error_log("Processed {$processed_count} emails from queue");
+}
+
+// When queue processing fails
+add_action('emailit_queue_failed', 'my_queue_failed_handler', 10, 2);
+function my_queue_failed_handler($batch_size, $error) {
+    // Handle queue processing failures
+    error_log('Queue processing failed: ' . $error->get_error_message());
+}
+```
+
+##### **Error Handling Events**
+```php
+// When any error occurs
+add_action('emailit_error_occurred', 'my_error_handler', 10, 3);
+function my_error_handler($error_code, $error_message, $context) {
+    // Handle general errors
+    error_log("Error occurred: {$error_code} - {$error_message}");
+}
+
+// When critical error occurs
+add_action('emailit_critical_error', 'my_critical_error_handler', 10, 3);
+function my_critical_error_handler($error_code, $error_message, $context) {
+    // Handle critical errors (send alerts, etc.)
+    wp_mail(get_option('admin_email'), 'Critical Emailit Error', $error_message);
+}
+
+// When circuit breaker opens
+add_action('emailit_circuit_breaker_opened', 'my_circuit_breaker_handler', 10, 1);
+function my_circuit_breaker_handler($failure_count) {
+    // Handle circuit breaker activation
+    error_log("Circuit breaker opened after {$failure_count} failures");
+}
+
+// When retry is scheduled
+add_action('emailit_retry_scheduled', 'my_retry_scheduled_handler', 10, 3);
+function my_retry_scheduled_handler($operation, $error_code, $retry_count) {
+    // Handle retry scheduling
+    error_log("Retry scheduled for {$operation} (attempt {$retry_count})");
+}
+```
+
+##### **FluentCRM Integration Events**
+```php
+// When FluentCRM subscriber bounces
+add_action('emailit_fluentcrm_subscriber_bounced', 'my_bounce_handler', 10, 4);
+function my_bounce_handler($subscriber, $old_status, $bounce_data, $webhook) {
+    // Handle FluentCRM subscriber bounces
+    error_log("Subscriber {$subscriber->email} bounced: {$bounce_data['reason']}");
+}
+
+// When FluentCRM subscriber complains
+add_action('emailit_fluentcrm_subscriber_complained', 'my_complaint_handler', 10, 4);
+function my_complaint_handler($subscriber, $old_status, $bounce_data, $webhook) {
+    // Handle FluentCRM subscriber complaints
+    error_log("Subscriber {$subscriber->email} complained");
+}
+
+// When FluentCRM status changes
+add_action('emailit_fluentcrm_status_changed', 'my_status_change_handler', 10, 4);
+function my_status_change_handler($subscriber, $old_status, $new_status, $webhook) {
+    // Handle FluentCRM status changes
+    error_log("Subscriber {$subscriber->email} status changed: {$old_status} -> {$new_status}");
+}
+```
+
+#### **Filter Hooks**
+
+##### **Email Data Modification**
+```php
+// Modify email data before sending
+add_filter('emailit_email_data', 'my_email_data_filter', 10, 6);
+function my_email_data_filter($email_data, $to, $subject, $message, $headers, $attachments) {
+    // Add custom headers or modify email data
+    $email_data['custom_field'] = 'custom_value';
+    return $email_data;
+}
+
+// Control which emails are sent via Emailit
+add_filter('emailit_should_send', 'my_should_send_filter', 10, 2);
+function my_should_send_filter($should_send, $email_data) {
+    // Skip certain emails
+    if (strpos($email_data['to'], '@example.com') !== false) {
+        return false;
+    }
+    return $should_send;
+}
+
+// Modify API request arguments
+add_filter('emailit_api_args', 'my_api_args_filter', 10, 2);
+function my_api_args_filter($args, $endpoint) {
+    // Add custom headers or modify API requests
+    $args['headers']['X-Custom-Header'] = 'custom-value';
+    return $args;
+}
+```
+
+##### **Error Handling Filters**
+```php
+// Control error notifications
+add_filter('emailit_should_send_notification', 'my_notification_filter', 10, 3);
+function my_notification_filter($should_send, $error_code, $error_level) {
+    // Skip notifications for certain errors
+    if ($error_code === 'rate_limit_exceeded') {
+        return false;
+    }
+    return $should_send;
+}
+
+// Customize retry strategies
+add_filter('emailit_retry_strategy', 'my_retry_strategy_filter', 10, 2);
+function my_retry_strategy_filter($strategy, $error_code) {
+    // Custom retry strategy for specific errors
+    if ($error_code === 'timeout') {
+        $strategy['max_retries'] = 5;
+        $strategy['base_delay'] = 10;
+    }
+    return $strategy;
+}
+
+// Add custom error context
+add_filter('emailit_error_context', 'my_error_context_filter', 10, 2);
+function my_error_context_filter($context, $error_code) {
+    // Add custom context to error data
+    $context['custom_data'] = 'custom_value';
+    $context['user_id'] = get_current_user_id();
+    return $context;
+}
+
+// Customize circuit breaker threshold
+add_filter('emailit_circuit_breaker_threshold', 'my_circuit_breaker_filter', 10, 1);
+function my_circuit_breaker_filter($threshold) {
+    // Adjust circuit breaker threshold
+    return 10; // Increase threshold to 10 failures
+}
+```
+
+##### **Database and Performance Filters**
+```php
+// Customize query cache duration
+add_filter('emailit_query_cache_duration', 'my_cache_duration_filter', 10, 1);
+function my_cache_duration_filter($duration) {
+    // Extend cache duration
+    return 600; // 10 minutes
+}
+
+// Customize database optimization settings
+add_filter('emailit_database_optimization_settings', 'my_optimization_filter', 10, 1);
+function my_optimization_filter($settings) {
+    // Modify optimization settings
+    $settings['cleanup_days'] = 30;
+    return $settings;
+}
+
+// Control email exclusions
+add_filter('emailit_is_excluded_email', 'my_exclusion_filter', 10, 6);
+function my_exclusion_filter($is_excluded, $to, $subject, $message, $headers, $attachments) {
+    // Add custom email exclusions
+    if (strpos($subject, '[TEST]') !== false) {
+        return true;
+    }
+    return $is_excluded;
+}
+
+// Modify queue batch size
+add_filter('emailit_queue_batch_size', 'my_batch_size_filter', 10, 1);
+function my_batch_size_filter($batch_size) {
+    // Adjust queue batch size
+    return 25; // Process 25 emails per batch
+}
+```
+
+##### **FluentCRM Integration Filters**
+```php
+// Customize bounce notification data
+add_filter('emailit_fluentcrm_bounce_notification_data', 'my_bounce_data_filter', 10, 3);
+function my_bounce_data_filter($data, $subscriber, $bounce_data) {
+    // Add custom data to bounce notifications
+    $data['custom_field'] = 'custom_value';
+    $data['subscriber_tags'] = $subscriber->tags;
+    return $data;
+}
+
+// Control FluentCRM action mapping
+add_filter('emailit_fluentcrm_should_map_action', 'my_action_mapping_filter', 10, 4);
+function my_action_mapping_filter($should_map, $bounce_type, $subscriber, $confidence) {
+    // Skip action mapping for certain conditions
+    if ($confidence < 80) {
+        return false;
+    }
+    return $should_map;
+}
+```
+
+#### **Hook Usage Examples**
+
+##### **Custom Email Logging**
+```php
+// Log all emails to custom table
+add_action('emailit_after_send', function($email_data, $response, $message_id) {
+    global $wpdb;
+    
+    $wpdb->insert(
+        $wpdb->prefix . 'custom_email_logs',
+        array(
+            'message_id' => $message_id,
+            'to_email' => $email_data['to'],
+            'subject' => $email_data['subject'],
+            'sent_at' => current_time('mysql'),
+            'status' => 'sent'
+        )
+    );
+}, 10, 3);
+```
+
+##### **Custom Error Alerting**
+```php
+// Send custom alerts for critical errors
+add_action('emailit_critical_error', function($error_code, $error_message, $context) {
+    // Send to external monitoring service
+    wp_remote_post('https://your-monitoring-service.com/alerts', array(
+        'body' => array(
+            'error_code' => $error_code,
+            'message' => $error_message,
+            'context' => $context,
+            'timestamp' => current_time('mysql')
+        )
+    ));
+}, 10, 3);
+```
+
+##### **Custom Retry Logic**
+```php
+// Implement custom retry logic
+add_filter('emailit_retry_strategy', function($strategy, $error_code) {
+    if ($error_code === 'quota_exceeded') {
+        // Wait longer for quota errors
+        $strategy['base_delay'] = 3600; // 1 hour
+        $strategy['max_retries'] = 1;
+    }
+    return $strategy;
+}, 10, 2);
+```
+
 ## Changelog
+
+### Version 2.6.0 - Advanced Error Handling System
+
+### 🛡️ **Advanced Error Handling & Recovery**
+- **Enhanced Circuit Breaker**: Improved failure detection and automatic recovery mechanisms
+- **Intelligent Retry System**: Advanced retry mechanisms with exponential backoff and jitter
+- **Error Analytics**: Comprehensive error tracking, pattern detection, and trend analysis
+- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack integration
+- **Error Recovery**: Automated recovery strategies for different error types
+- **Debugging Tools**: Enhanced debugging and troubleshooting capabilities
+
+### 📊 **Error Analytics & Monitoring**
+- **Pattern Detection**: Automatic detection of error patterns and correlations
+- **Trend Analysis**: Real-time error trend monitoring and anomaly detection
+- **Frequency Monitoring**: High-frequency error detection and alerting
+- **Error Insights**: Intelligent recommendations based on error analysis
+- **Performance Metrics**: Error resolution rates and response time tracking
+
+### 🔧 **Admin Interface Enhancements**
+- **Error Handling Settings**: New "Advanced Error Handling" settings section
+- **Real-time Status**: Live error handling status and circuit breaker state
+- **Error Statistics**: Comprehensive error statistics and insights dashboard
+- **Configuration Options**: Granular control over error handling behavior
+- **Notification Settings**: Configurable notification channels and preferences
+
+### ⚡ **Production Reliability**
+- **Cascading Failure Prevention**: Circuit breaker prevents system-wide failures
+- **Automatic Recovery**: Self-healing mechanisms for transient errors
+- **Data Retention**: Configurable error data retention and cleanup
+- **Memory Optimization**: Efficient error tracking and storage
+- **Cron Integration**: Automated error analysis and cleanup processes
+
+---
 
 ### Version 2.5.0 - FluentCRM Action Mapping & Soft Bounce Management
 

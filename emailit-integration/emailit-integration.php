@@ -52,6 +52,7 @@ class Emailit_Integration {
     private $db_optimizer = null;
     private $query_optimizer = null;
     private $fluentcrm_handler = null;
+    private $health_monitor = null;
 
     /**
      * Get plugin instance
@@ -155,6 +156,16 @@ class Emailit_Integration {
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-queue.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailer.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-webhook.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-health-monitor.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-alert-manager.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-metrics-collector.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-health-migration.php';
+        
+        // Advanced error handling components
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-analytics.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-retry-manager.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-notifications.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-migration.php';
 
         // Load admin classes if in admin
         if (is_admin()) {
@@ -212,6 +223,56 @@ class Emailit_Integration {
         
         // Initialize query optimizer
         $this->query_optimizer = new Emailit_Query_Optimizer();
+        
+        // Initialize health monitor
+        $this->health_monitor = new Emailit_Health_Monitor($this->logger);
+
+        // Initialize advanced error handling
+        $this->init_advanced_error_handling();
+    }
+
+    /**
+     * Initialize advanced error handling components
+     */
+    private function init_advanced_error_handling() {
+        // Create error handling tables
+        Emailit_Error_Migration::create_tables();
+        
+        // Schedule error analysis
+        if (!wp_next_scheduled('emailit_error_analysis')) {
+            wp_schedule_event(time(), 'hourly', 'emailit_error_analysis');
+        }
+        
+        // Schedule retry cleanup
+        if (!wp_next_scheduled('emailit_retry_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'emailit_retry_cleanup');
+        }
+        
+        // Schedule error data cleanup
+        if (!wp_next_scheduled('emailit_error_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'emailit_error_cleanup');
+        }
+        
+        // Hook into cleanup events
+        add_action('emailit_retry_cleanup', array($this, 'cleanup_retry_data'));
+        add_action('emailit_error_cleanup', array($this, 'cleanup_error_data'));
+    }
+
+    /**
+     * Cleanup retry data
+     */
+    public function cleanup_retry_data() {
+        if (class_exists('Emailit_Retry_Manager')) {
+            $retry_manager = new Emailit_Retry_Manager($this->logger);
+            $retry_manager->cleanup_old_retries();
+        }
+    }
+
+    /**
+     * Cleanup error data
+     */
+    public function cleanup_error_data() {
+        Emailit_Error_Migration::cleanup_old_data();
     }
 
     /**
@@ -229,6 +290,36 @@ class Emailit_Integration {
 
         // Enqueue scripts and styles
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+        
+        // Add custom cron intervals for health monitoring
+        add_filter('cron_schedules', array($this, 'add_cron_intervals'));
+    }
+
+    /**
+     * Add custom cron intervals for health monitoring
+     */
+    public function add_cron_intervals($schedules) {
+        $schedules['emailit_5min'] = array(
+            'interval' => 300, // 5 minutes
+            'display' => __('Every 5 Minutes (Emailit)', 'emailit-integration')
+        );
+        
+        $schedules['emailit_10min'] = array(
+            'interval' => 600, // 10 minutes
+            'display' => __('Every 10 Minutes (Emailit)', 'emailit-integration')
+        );
+        
+        $schedules['emailit_15min'] = array(
+            'interval' => 900, // 15 minutes
+            'display' => __('Every 15 Minutes (Emailit)', 'emailit-integration')
+        );
+        
+        $schedules['emailit_30min'] = array(
+            'interval' => 1800, // 30 minutes
+            'display' => __('Every 30 Minutes (Emailit)', 'emailit-integration')
+        );
+        
+        return $schedules;
     }
 
     /**
@@ -292,6 +383,12 @@ class Emailit_Integration {
 
         // Run database migrations
         $this->run_database_migrations();
+        
+        // Create health monitoring tables
+        Emailit_Health_Migration::create_tables();
+        
+        // Create error handling tables
+        Emailit_Error_Migration::create_tables();
 
         // Set default options
         $this->set_default_options();
