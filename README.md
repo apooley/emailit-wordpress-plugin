@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.6.0-green.svg)
+![Version](https://img.shields.io/badge/Version-2.6.1-green.svg)
 
 ## 📁 Repository Contents
 
@@ -78,9 +78,18 @@ For detailed installation instructions, configuration options, troubleshooting, 
 
 ## 📄 **License**
 
-## 🆕 Latest Features (Version 2.6.0)
+## 🆕 Latest Features (Version 2.6.1)
 
-### 🛡️ **Advanced Error Handling System**
+### 🐛 **Critical Bug Fixes & Stability Improvements**
+- **Fixed Health Monitor Critical Errors**: Resolved E_ERROR in health monitor page
+- **Fixed Database Migration Errors**: Resolved duplicate key and missing table errors
+- **Fixed Metrics Collection Errors**: Removed references to non-existent database columns
+- **Fixed Health Check Email Spam**: Prevented real email sending during health checks
+- **Fixed Webhook Health Check Loops**: Prevented HTTP requests to self
+- **Enhanced Error Handling**: Added comprehensive try-catch blocks and table existence checks
+- **Improved System Stability**: Better initialization and graceful degradation
+
+### 🛡️ **Advanced Error Handling System** (Version 2.6.0)
 - **Circuit Breaker Protection**: Automatic failure detection and recovery mechanisms
 - **Intelligent Retry System**: Exponential backoff with jitter for failed operations
 - **Error Analytics**: Pattern detection, trend analysis, and anomaly detection

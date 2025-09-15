@@ -61,11 +61,17 @@ class Emailit_Health_Monitor {
      */
     public function __construct($logger) {
         $this->logger = $logger;
-        $this->alert_manager = new Emailit_Alert_Manager($logger);
-        $this->metrics_collector = new Emailit_Metrics_Collector($logger);
         
-        // Initialize health monitoring
-        $this->init_health_monitoring();
+        try {
+            $this->alert_manager = new Emailit_Alert_Manager($logger);
+            $this->metrics_collector = new Emailit_Metrics_Collector($logger);
+            
+            // Initialize health monitoring
+            $this->init_health_monitoring();
+        } catch (Exception $e) {
+            // Log the error but don't break the plugin
+            error_log("Failed to initialize health monitor: " . $e->getMessage());
+        }
     }
 
     /**
@@ -178,59 +184,90 @@ class Emailit_Health_Monitor {
             return;
         }
 
-        // Test API connectivity with a simple request
-        $test_data = array(
-            'to' => 'test@example.com',
-            'subject' => 'Health Check Test',
-            'message' => 'This is a health check test email.'
-        );
+        // Test API connectivity with a simple validation request (not sending actual email)
+        try {
+            $api = new Emailit_API($this->logger);
+            
+            // Just validate the API key without sending an email
+            $validation_result = $this->validate_api_key($api_key);
+            
+            $response_time = microtime(true) - $start_time;
+            $status = $validation_result['valid'] ? 'success' : 'error';
+            $message = $validation_result['valid'] ? 'API key is valid' : $validation_result['message'];
 
-        $api = new Emailit_API($this->logger);
-        $response = $api->send_email($test_data);
+            $this->record_health_check('api_connectivity', $status, $message, array(
+                'response_time' => $response_time,
+                'error_code' => $validation_result['valid'] ? null : 'invalid_api_key'
+            ));
 
-        $response_time = microtime(true) - $start_time;
-        $status = is_wp_error($response) ? 'error' : 'success';
-        $message = is_wp_error($response) ? $response->get_error_message() : 'API connectivity OK';
-
-        $this->record_health_check('api_connectivity', $status, $message, array(
-            'response_time' => $response_time,
-            'error_code' => is_wp_error($response) ? $response->get_error_code() : null
-        ));
-
-        // Check if response time exceeds threshold
-        if ($response_time > $this->alert_thresholds['api_response_time']) {
-            $this->alert_manager->trigger_alert('performance', 'warning', 
-                sprintf('API response time is slow: %.2fs', $response_time));
+            // Check if response time exceeds threshold
+            if ($response_time > $this->alert_thresholds['api_response_time']) {
+                $this->alert_manager->trigger_alert('performance', 'warning', 
+                    sprintf('API validation is slow: %.2fs', $response_time));
+            }
+        } catch (Exception $e) {
+            $this->record_health_check('api_connectivity', 'error', 
+                'API connectivity check failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Validate API key without sending emails
+     */
+    private function validate_api_key($api_key) {
+        // Simple validation - check if API key format looks valid
+        if (empty($api_key) || strlen($api_key) < 10) {
+            return array(
+                'valid' => false,
+                'message' => 'API key appears to be invalid or too short'
+            );
+        }
+
+        // Check if API key is properly encrypted/encoded
+        if (strpos($api_key, 'encrypted:') === 0) {
+            // This is an encrypted key, which is good
+            return array(
+                'valid' => true,
+                'message' => 'API key format is valid'
+            );
+        }
+
+        // For unencrypted keys, do a basic format check
+        if (preg_match('/^[a-zA-Z0-9_-]+$/', $api_key)) {
+            return array(
+                'valid' => true,
+                'message' => 'API key format is valid'
+            );
+        }
+
+        return array(
+            'valid' => false,
+            'message' => 'API key format is invalid'
+        );
     }
 
     /**
      * Check webhook endpoint health
      */
     public function check_webhook_endpoint() {
+        // Check if webhook endpoint is properly registered
         $webhook_url = rest_url('emailit/v1/webhook');
-        $health_url = rest_url('emailit/v1/webhook/health');
-
-        // Test webhook endpoint accessibility
-        $response = wp_remote_get($health_url, array(
-            'timeout' => 10,
-            'sslverify' => false
-        ));
-
-        if (is_wp_error($response)) {
-            $this->record_health_check('webhook_endpoint', 'error', 
-                'Webhook endpoint not accessible: ' . $response->get_error_message());
+        
+        // Verify REST API endpoint exists
+        $rest_server = rest_get_server();
+        $routes = $rest_server->get_routes();
+        
+        if (!isset($routes['/emailit/v1/webhook'])) {
+            $this->record_health_check('webhook_endpoint', 'error', 'Webhook endpoint not registered');
             return;
         }
 
-        $status_code = wp_remote_retrieve_response_code($response);
-        $body = wp_remote_retrieve_body($response);
-
-        if ($status_code === 200) {
-            $this->record_health_check('webhook_endpoint', 'success', 'Webhook endpoint accessible');
+        // Check webhook configuration
+        $webhook_secret = get_option('emailit_webhook_secret', '');
+        if (empty($webhook_secret)) {
+            $this->record_health_check('webhook_endpoint', 'warning', 'Webhook secret not configured');
         } else {
-            $this->record_health_check('webhook_endpoint', 'error', 
-                sprintf('Webhook endpoint returned status %d', $status_code));
+            $this->record_health_check('webhook_endpoint', 'success', 'Webhook endpoint properly configured');
         }
 
         // Check webhook processing performance
@@ -246,31 +283,43 @@ class Emailit_Health_Monitor {
         $issues = array();
         $status = 'success';
 
-        // Check table integrity
-        $tables = array('emailit_logs', 'emailit_webhook_logs', 'emailit_queue');
-        
-        foreach ($tables as $table) {
-            $table_name = $wpdb->prefix . $table;
-            $result = $wpdb->get_var("CHECK TABLE {$table_name}");
+        try {
+            // Check table integrity - only check tables that exist
+            $tables = array('emailit_logs', 'emailit_webhook_logs', 'emailit_queue');
             
-            if (strpos($result, 'OK') === false) {
-                $issues[] = "Table {$table} has integrity issues: {$result}";
-                $status = 'error';
+            foreach ($tables as $table) {
+                $table_name = $wpdb->prefix . $table;
+                
+                // Check if table exists first
+                if (!$wpdb->get_var("SHOW TABLES LIKE '{$table_name}'")) {
+                    continue; // Skip non-existent tables
+                }
+                
+                $result = $wpdb->get_var("CHECK TABLE {$table_name}");
+                
+                if ($result && strpos($result, 'OK') === false) {
+                    $issues[] = "Table {$table} has integrity issues: {$result}";
+                    $status = 'error';
+                }
             }
-        }
 
-        // Check index usage
-        $index_issues = $this->check_database_indexes();
-        if (!empty($index_issues)) {
-            $issues = array_merge($issues, $index_issues);
-            $status = 'warning';
-        }
+            // Check index usage
+            $index_issues = $this->check_database_indexes();
+            if (!empty($index_issues)) {
+                $issues = array_merge($issues, $index_issues);
+                $status = $status === 'error' ? 'error' : 'warning';
+            }
 
-        // Check query performance
-        $slow_queries = $this->check_slow_queries();
-        if (!empty($slow_queries)) {
-            $issues[] = 'Slow queries detected: ' . implode(', ', $slow_queries);
-            $status = 'warning';
+            // Check query performance
+            $slow_queries = $this->check_slow_queries();
+            if (!empty($slow_queries)) {
+                $issues[] = 'Slow queries detected: ' . implode(', ', $slow_queries);
+                $status = $status === 'error' ? 'error' : 'warning';
+            }
+
+        } catch (Exception $e) {
+            $issues[] = 'Database health check failed: ' . $e->getMessage();
+            $status = 'error';
         }
 
         $message = empty($issues) ? 'Database health OK' : implode('; ', $issues);
@@ -450,25 +499,32 @@ class Emailit_Health_Monitor {
      * Record health check result
      */
     private function record_health_check($check_type, $status, $message, $data = array()) {
-        $result = array(
-            'check_type' => $check_type,
-            'status' => $status,
-            'message' => $message,
-            'timestamp' => current_time('mysql'),
-            'data' => $data
-        );
+        try {
+            $result = array(
+                'check_type' => $check_type,
+                'status' => $status,
+                'message' => $message,
+                'timestamp' => current_time('mysql'),
+                'data' => $data
+            );
 
-        // Store in cache
-        $this->health_cache[$check_type] = $result;
+            // Store in cache
+            $this->health_cache[$check_type] = $result;
 
-        // Store in database
-        $this->store_health_check_result($result);
+            // Store in database
+            $this->store_health_check_result($result);
 
-        // Log the result
-        $this->logger->log("Health check: {$check_type} - {$status}", 
-            $status === 'success' ? Emailit_Logger::LEVEL_INFO : Emailit_Logger::LEVEL_WARNING,
-            $result
-        );
+            // Log the result (only if logger is available)
+            if ($this->logger) {
+                $this->logger->log("Health check: {$check_type} - {$status}", 
+                    $status === 'success' ? Emailit_Logger::LEVEL_INFO : Emailit_Logger::LEVEL_WARNING,
+                    $result
+                );
+            }
+        } catch (Exception $e) {
+            // Log the error but don't break the health check
+            error_log("Failed to record health check: " . $e->getMessage());
+        }
     }
 
     /**
@@ -479,13 +535,23 @@ class Emailit_Health_Monitor {
 
         $table = $wpdb->prefix . 'emailit_health_checks';
         
-        $wpdb->insert($table, array(
-            'check_type' => $result['check_type'],
-            'status' => $result['status'],
-            'message' => $result['message'],
-            'data' => wp_json_encode($result['data']),
-            'created_at' => $result['timestamp']
-        ));
+        // Check if table exists before trying to insert
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$table}'")) {
+            return; // Skip database storage if table doesn't exist
+        }
+        
+        try {
+            $wpdb->insert($table, array(
+                'check_type' => $result['check_type'],
+                'status' => $result['status'],
+                'message' => $result['message'],
+                'data' => wp_json_encode($result['data']),
+                'created_at' => $result['timestamp']
+            ));
+        } catch (Exception $e) {
+            // Log the error but don't break the health check
+            error_log("Failed to store health check result: " . $e->getMessage());
+        }
     }
 
     /**

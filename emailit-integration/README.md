@@ -1,8 +1,29 @@
 # Emailit Integration for WordPress
 
-**Version 2.6.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
+**Version 2.6.1** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.6.1 - Critical Bug Fixes & Stability Improvements
+
+#### 🐛 **Critical Bug Fixes**
+- **Fixed Health Monitor Critical Errors**: Resolved E_ERROR in health monitor page caused by WP_REST_Response object being used as array
+- **Fixed Database Migration Errors**: Resolved duplicate key name errors and missing table errors in error handling migration
+- **Fixed Metrics Collection Errors**: Removed references to non-existent database columns (response_time, processing_time)
+- **Fixed Health Check Email Spam**: Prevented health monitor from sending real test emails during API connectivity checks
+- **Fixed Webhook Health Check Loops**: Prevented HTTP requests to self that could cause infinite loops
+
+#### 🛡️ **Enhanced Error Handling**
+- **Improved Index Creation**: Added proper index existence checks to prevent duplicate key errors
+- **Enhanced Table Existence Checks**: Added comprehensive table existence verification before database operations
+- **Better Error Recovery**: Added try-catch blocks throughout health monitoring system
+- **Graceful Degradation**: Health monitor now continues functioning even when some components fail
+
+#### 🔧 **System Stability**
+- **Safer Initialization**: Health monitor initialization now has proper error handling
+- **Improved Database Queries**: All database queries now check for table/column existence
+- **Better Logging**: Enhanced error logging without breaking core functionality
+- **Reduced Resource Usage**: Health checks no longer perform unnecessary operations
 
 ### Version 2.6.0 - Advanced Error Handling System
 

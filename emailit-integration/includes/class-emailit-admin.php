@@ -667,6 +667,16 @@ class Emailit_Admin {
      * Health Monitor page callback
      */
     public function health_monitor_page_callback() {
+        // Initialize health monitor and get status
+        $health_monitor = emailit_get_component('health_monitor');
+        if (!$health_monitor) {
+            echo '<div class="notice notice-error"><p>' . __('Health monitoring is not available.', 'emailit-integration') . '</p></div>';
+            return;
+        }
+        
+        $health_status = $health_monitor->get_health_status();
+        $health_metrics = $health_monitor->get_health_metrics();
+        
         include EMAILIT_PLUGIN_DIR . 'admin/views/health-monitor.php';
     }
 

@@ -10,9 +10,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Get health monitor instance
-$health_monitor = new Emailit_Health_Monitor(new Emailit_Logger());
-$health_status = $health_monitor->get_health_status();
+// Health status and metrics are passed from the admin callback
+// Get additional data if needed
 $health_metrics = $health_monitor->get_health_metrics();
 
 // Get health statistics

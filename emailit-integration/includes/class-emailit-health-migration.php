@@ -232,25 +232,44 @@ class Emailit_Health_Migration {
         $health_checks_table = $wpdb->prefix . 'emailit_health_checks';
         $alerts_table = $wpdb->prefix . 'emailit_alerts';
 
-        // Health check statistics
-        $health_stats = $wpdb->get_row(
-            "SELECT 
-                COUNT(*) as total_checks,
-                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_checks,
-                SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END) as warning_checks,
-                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_checks
-            FROM {$health_checks_table}"
+        // Initialize default stats
+        $health_stats = (object) array(
+            'total_checks' => 0,
+            'successful_checks' => 0,
+            'warning_checks' => 0,
+            'error_checks' => 0
         );
 
-        // Alert statistics
-        $alert_stats = $wpdb->get_row(
-            "SELECT 
-                COUNT(*) as total_alerts,
-                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_alerts,
-                SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) as warning_alerts,
-                SUM(CASE WHEN dismissed = 1 THEN 1 ELSE 0 END) as dismissed_alerts
-            FROM {$alerts_table}"
+        $alert_stats = (object) array(
+            'total_alerts' => 0,
+            'critical_alerts' => 0,
+            'warning_alerts' => 0,
+            'dismissed_alerts' => 0
         );
+
+        // Health check statistics - only if table exists
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$health_checks_table}'")) {
+            $health_stats = $wpdb->get_row(
+                "SELECT 
+                    COUNT(*) as total_checks,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_checks,
+                    SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END) as warning_checks,
+                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_checks
+                FROM {$health_checks_table}"
+            );
+        }
+
+        // Alert statistics - only if table exists
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$alerts_table}'")) {
+            $alert_stats = $wpdb->get_row(
+                "SELECT 
+                    COUNT(*) as total_alerts,
+                    SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_alerts,
+                    SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) as warning_alerts,
+                    SUM(CASE WHEN dismissed = 1 THEN 1 ELSE 0 END) as dismissed_alerts
+                FROM {$alerts_table}"
+            );
+        }
 
         return array(
             'health_checks' => array(

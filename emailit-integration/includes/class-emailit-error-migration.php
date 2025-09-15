@@ -18,6 +18,27 @@ class Emailit_Error_Migration {
     public static function create_tables() {
         global $wpdb;
 
+        // Check if tables already exist to avoid conflicts
+        $tables_to_check = array(
+            $wpdb->prefix . 'emailit_error_analytics',
+            $wpdb->prefix . 'emailit_retries',
+            $wpdb->prefix . 'emailit_error_notifications',
+            $wpdb->prefix . 'emailit_error_patterns'
+        );
+
+        $existing_tables = array();
+        foreach ($tables_to_check as $table) {
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'")) {
+                $existing_tables[] = $table;
+            }
+        }
+
+        // If all tables exist, just create indexes
+        if (count($existing_tables) === count($tables_to_check)) {
+            self::create_indexes();
+            return;
+        }
+
         $charset_collate = $wpdb->get_charset_collate();
 
         // Error analytics table
@@ -109,6 +130,15 @@ class Emailit_Error_Migration {
     }
 
     /**
+     * Safely initialize error handling tables
+     * This method can be called multiple times without errors
+     */
+    public static function safe_init() {
+        // Only create tables if they don't exist
+        self::create_tables();
+    }
+
+    /**
      * Create additional indexes
      */
     private static function create_indexes() {
@@ -119,18 +149,49 @@ class Emailit_Error_Migration {
         $notifications_table = $wpdb->prefix . 'emailit_error_notifications';
         $patterns_table = $wpdb->prefix . 'emailit_error_patterns';
 
-        // Composite indexes for common queries
-        $wpdb->query("CREATE INDEX idx_error_analytics_code_status ON {$error_analytics_table} (error_code, status)");
-        $wpdb->query("CREATE INDEX idx_error_analytics_level_created ON {$error_analytics_table} (error_level, created_at)");
-        $wpdb->query("CREATE INDEX idx_error_analytics_user_created ON {$error_analytics_table} (user_id, created_at)");
-        
-        $wpdb->query("CREATE INDEX idx_retries_code_status ON {$retries_table} (error_code, status)");
-        $wpdb->query("CREATE INDEX idx_retries_operation_created ON {$retries_table} (operation, created_at)");
-        
-        $wpdb->query("CREATE INDEX idx_notifications_code_channel ON {$notifications_table} (error_code, channel)");
-        $wpdb->query("CREATE INDEX idx_notifications_status_created ON {$notifications_table} (status, created_at)");
-        
-        $wpdb->query("CREATE INDEX idx_patterns_type_frequency ON {$patterns_table} (pattern_type, frequency)");
+        // Define indexes to create
+        $indexes = array(
+            $error_analytics_table => array(
+                'idx_error_analytics_code_status' => '(error_code, status)',
+                'idx_error_analytics_level_created' => '(error_level, created_at)',
+                'idx_error_analytics_user_created' => '(user_id, created_at)'
+            ),
+            $retries_table => array(
+                'idx_retries_code_status' => '(error_code, status)',
+                'idx_retries_operation_created' => '(operation, created_at)'
+            ),
+            $notifications_table => array(
+                'idx_notifications_code_channel' => '(error_code, channel)',
+                'idx_notifications_status_created' => '(status, created_at)'
+            ),
+            $patterns_table => array(
+                'idx_patterns_type_frequency' => '(pattern_type, frequency)'
+            )
+        );
+
+        // Create indexes only if they don't exist
+        foreach ($indexes as $table => $table_indexes) {
+            // Check if table exists first
+            if (!$wpdb->get_var("SHOW TABLES LIKE '{$table}'")) {
+                continue;
+            }
+
+            foreach ($table_indexes as $index_name => $index_columns) {
+                // Check if index already exists using SHOW INDEX
+                $index_exists = $wpdb->get_var($wpdb->prepare(
+                    "SHOW INDEX FROM {$table} WHERE Key_name = %s",
+                    $index_name
+                ));
+
+                if (!$index_exists) {
+                    $result = $wpdb->query("CREATE INDEX {$index_name} ON {$table} {$index_columns}");
+                    if ($result === false) {
+                        // Log the error but don't stop execution
+                        error_log("Failed to create index {$index_name} on {$table}: " . $wpdb->last_error);
+                    }
+                }
+            }
+        }
     }
 
     /**

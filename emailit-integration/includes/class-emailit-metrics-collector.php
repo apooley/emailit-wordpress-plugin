@@ -157,8 +157,7 @@ class Emailit_Metrics_Collector {
             "SELECT 
                 COUNT(*) as total_requests,
                 SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as successful_requests,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_requests,
-                AVG(CASE WHEN response_time IS NOT NULL THEN response_time ELSE 0 END) as avg_response_time
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_requests
             FROM {$logs_table} 
             WHERE created_at >= %s",
             $one_hour_ago
@@ -181,8 +180,7 @@ class Emailit_Metrics_Collector {
                 'successful_requests' => intval($recent_stats->successful_requests),
                 'failed_requests' => intval($recent_stats->failed_requests),
                 'success_rate' => $recent_stats->total_requests > 0 ? 
-                    $recent_stats->successful_requests / $recent_stats->total_requests : 0,
-                'avg_response_time' => floatval($recent_stats->avg_response_time)
+                    $recent_stats->successful_requests / $recent_stats->total_requests : 0
             ),
             'daily' => array(
                 'total_requests' => intval($daily_stats->total_requests),
@@ -207,8 +205,7 @@ class Emailit_Metrics_Collector {
             "SELECT 
                 COUNT(*) as total_webhooks,
                 SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_webhooks,
-                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_webhooks,
-                AVG(processing_time) as avg_processing_time
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_webhooks
             FROM {$webhook_table} 
             WHERE created_at >= %s",
             $one_hour_ago
@@ -219,8 +216,7 @@ class Emailit_Metrics_Collector {
             'successful_webhooks' => intval($stats->successful_webhooks),
             'failed_webhooks' => intval($stats->failed_webhooks),
             'success_rate' => $stats->total_webhooks > 0 ? 
-                $stats->successful_webhooks / $stats->total_webhooks : 0,
-            'avg_processing_time' => floatval($stats->avg_processing_time)
+                $stats->successful_webhooks / $stats->total_webhooks : 0
         );
     }
 

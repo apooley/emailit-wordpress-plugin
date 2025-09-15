@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.6.0
+ * Version: 2.6.1
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.6.0');
+define('EMAILIT_VERSION', '2.6.1');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -235,8 +235,10 @@ class Emailit_Integration {
      * Initialize advanced error handling components
      */
     private function init_advanced_error_handling() {
-        // Create error handling tables
-        Emailit_Error_Migration::create_tables();
+        // Only initialize error handling tables during admin or activation
+        if (is_admin() || wp_doing_ajax()) {
+            Emailit_Error_Migration::safe_init();
+        }
         
         // Schedule error analysis
         if (!wp_next_scheduled('emailit_error_analysis')) {
@@ -387,8 +389,8 @@ class Emailit_Integration {
         // Create health monitoring tables
         Emailit_Health_Migration::create_tables();
         
-        // Create error handling tables
-        Emailit_Error_Migration::create_tables();
+        // Create error handling tables safely
+        Emailit_Error_Migration::safe_init();
 
         // Set default options
         $this->set_default_options();
