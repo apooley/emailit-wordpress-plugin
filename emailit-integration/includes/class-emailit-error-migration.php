@@ -210,29 +210,37 @@ class Emailit_Error_Migration {
         $notifications_retention = get_option('emailit_notifications_retention_days', 14);
         $patterns_retention = get_option('emailit_patterns_retention_days', 90);
 
-        // Clean up error analytics older than retention period
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$error_analytics_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $analytics_retention
-        ));
+        // Clean up error analytics older than retention period (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$error_analytics_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$error_analytics_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $analytics_retention
+            ));
+        }
 
-        // Clean up completed retries older than retention period
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$retries_table} WHERE status IN ('success', 'failed') AND created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $retries_retention
-        ));
+        // Clean up completed retries older than retention period (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$retries_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$retries_table} WHERE status IN ('success', 'failed') AND created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $retries_retention
+            ));
+        }
 
-        // Clean up old notifications
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$notifications_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $notifications_retention
-        ));
+        // Clean up old notifications (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$notifications_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$notifications_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $notifications_retention
+            ));
+        }
 
-        // Clean up old patterns
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$patterns_table} WHERE last_seen < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $patterns_retention
-        ));
+        // Clean up old patterns (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$patterns_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$patterns_table} WHERE last_seen < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $patterns_retention
+            ));
+        }
     }
 
     /**

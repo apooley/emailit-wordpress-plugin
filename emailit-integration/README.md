@@ -1,8 +1,26 @@
 # Emailit Integration for WordPress
 
-**Version 2.6.2** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
+**Version 2.6.3** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, advanced error handling, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.6.3 - Health Monitor & Cleanup Fixes
+
+#### 🐛 **Health Monitor Improvements**
+- **Fixed Delivery Rate Calculation**: Corrected status value queries to use 'sent' and 'delivered' instead of non-existent 'success' status
+- **Added Time Period Selection**: Implemented 1 hour, 24 hours, and 7 days time period selection for metrics
+- **Real-time Metrics Updates**: Added AJAX-powered refresh functionality for dynamic metric updates
+- **Enhanced Error Handling**: Improved error handling and fallbacks for missing data
+
+#### 🧹 **Cleanup Function Fixes**
+- **Fixed Table Existence Checks**: Added proper table existence checks before attempting cleanup operations
+- **Prevented Database Errors**: Eliminated "Table doesn't exist" errors when running cleanup functions
+- **Safe Cleanup Operations**: Cleanup now gracefully skips non-existent tables
+
+#### 📊 **Performance Metrics Enhancements**
+- **Accurate Delivery Rates**: Fixed calculation to show actual email delivery percentages
+- **Time-based Filtering**: Metrics now properly filter by selected time periods
+- **Improved User Experience**: Better error handling and data display
 
 ### Version 2.6.2 - Health Monitor Bug Fix
 

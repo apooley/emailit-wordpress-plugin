@@ -139,29 +139,37 @@ class Emailit_Health_Migration {
         $metrics_retention = get_option('emailit_metrics_retention_days', 7);
         $performance_retention = get_option('emailit_performance_retention_days', 14);
 
-        // Clean up health checks older than retention period
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$health_checks_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $health_retention
-        ));
+        // Clean up health checks older than retention period (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$health_checks_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$health_checks_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $health_retention
+            ));
+        }
 
-        // Clean up dismissed alerts older than retention period
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$alerts_table} WHERE dismissed = 1 AND dismissed_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $alerts_retention
-        ));
+        // Clean up dismissed alerts older than retention period (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$alerts_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$alerts_table} WHERE dismissed = 1 AND dismissed_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $alerts_retention
+            ));
+        }
 
-        // Clean up old metrics
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$metrics_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $metrics_retention
-        ));
+        // Clean up old metrics (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$metrics_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$metrics_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $metrics_retention
+            ));
+        }
 
-        // Clean up old performance logs
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$performance_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            $performance_retention
-        ));
+        // Clean up old performance logs (only if table exists)
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$performance_table}'")) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$performance_table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+                $performance_retention
+            ));
+        }
     }
 
     /**

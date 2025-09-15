@@ -44,6 +44,50 @@ $health_metrics = isset($health_metrics) ? $health_metrics : array(
 );
 ?>
 
+<style>
+.metrics-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.time-period-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.time-period-selector label {
+    font-weight: 600;
+    margin: 0;
+}
+
+.time-period-selector select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+#refresh-metrics {
+    margin-left: 10px;
+}
+
+@media (max-width: 768px) {
+    .metrics-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .time-period-selector {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+</style>
+
 <div class="wrap">
     <h1><?php _e('Emailit Health Monitor', 'emailit-integration'); ?></h1>
     
@@ -115,9 +159,22 @@ $health_metrics = isset($health_metrics) ? $health_metrics : array(
 
         <!-- Performance Metrics -->
         <div class="emailit-performance-metrics">
-            <h2><?php _e('Performance Metrics', 'emailit-integration'); ?></h2>
+            <div class="metrics-header">
+                <h2><?php _e('Performance Metrics', 'emailit-integration'); ?></h2>
+                <div class="time-period-selector">
+                    <label for="metrics-time-period"><?php _e('Time Period:', 'emailit-integration'); ?></label>
+                    <select id="metrics-time-period" name="time_period">
+                        <option value="1h" selected><?php _e('Last Hour', 'emailit-integration'); ?></option>
+                        <option value="24h"><?php _e('Last 24 Hours', 'emailit-integration'); ?></option>
+                        <option value="7d"><?php _e('Last 7 Days', 'emailit-integration'); ?></option>
+                    </select>
+                    <button type="button" id="refresh-metrics" class="button button-secondary">
+                        <?php _e('Refresh', 'emailit-integration'); ?>
+                    </button>
+                </div>
+            </div>
             
-            <div class="metrics-grid">
+            <div class="metrics-grid" id="metrics-grid">
                 <div class="metric-card">
                     <h3><?php _e('API Performance', 'emailit-integration'); ?></h3>
                     <div class="metric-value">
@@ -529,5 +586,89 @@ function emailitOptimizeTables() {
             button.disabled = false;
         });
     }
+    
+    // Time period selection functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const timePeriodSelect = document.getElementById('metrics-time-period');
+        const refreshButton = document.getElementById('refresh-metrics');
+        
+        if (timePeriodSelect && refreshButton) {
+            // Handle time period change
+            timePeriodSelect.addEventListener('change', function() {
+                refreshMetrics();
+            });
+            
+            // Handle refresh button click
+            refreshButton.addEventListener('click', function() {
+                refreshMetrics();
+            });
+        }
+        
+        function refreshMetrics() {
+            const timePeriod = document.getElementById('metrics-time-period').value;
+            const refreshButton = document.getElementById('refresh-metrics');
+            const originalText = refreshButton.textContent;
+            
+            refreshButton.textContent = '<?php _e('Loading...', 'emailit-integration'); ?>';
+            refreshButton.disabled = true;
+            
+            fetch(ajaxurl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    action: 'emailit_get_health_metrics',
+                    time_period: timePeriod,
+                    nonce: '<?php echo wp_create_nonce('emailit_health_metrics'); ?>'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateMetricsDisplay(data.data);
+                } else {
+                    alert('<?php _e('Error loading metrics: ', 'emailit-integration'); ?>' + (data.data || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('<?php _e('Error loading metrics: ', 'emailit-integration'); ?>' + error.message);
+            })
+            .finally(() => {
+                refreshButton.textContent = originalText;
+                refreshButton.disabled = false;
+            });
+        }
+        
+        function updateMetricsDisplay(metrics) {
+            // Update API Performance
+            const responseTime = metrics.api_metrics?.recent?.avg_response_time || 0;
+            const apiValue = document.querySelector('.metric-card:nth-child(1) .metric-value');
+            if (apiValue) {
+                apiValue.textContent = responseTime.toFixed(2) + 's';
+            }
+            
+            // Update Email Delivery
+            const deliveryRate = metrics.email_metrics?.recent?.delivery_rate || 0;
+            const emailValue = document.querySelector('.metric-card:nth-child(2) .metric-value');
+            if (emailValue) {
+                emailValue.textContent = (deliveryRate * 100).toFixed(1) + '%';
+            }
+            
+            // Update Queue Status
+            const pendingEmails = metrics.queue_metrics?.pending_emails || 0;
+            const queueValue = document.querySelector('.metric-card:nth-child(3) .metric-value');
+            if (queueValue) {
+                queueValue.textContent = pendingEmails.toString();
+            }
+            
+            // Update Memory Usage
+            const memoryUsage = metrics.performance_metrics?.memory_usage?.current || 0;
+            const memoryValue = document.querySelector('.metric-card:nth-child(4) .metric-value');
+            if (memoryValue) {
+                memoryValue.textContent = (memoryUsage / 1024 / 1024).toFixed(1) + 'MB';
+            }
+        }
+    });
 }
 </script>

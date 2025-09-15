@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-2.6.2-green.svg)
+![Version](https://img.shields.io/badge/Version-2.6.3-green.svg)
 
 ## 📁 Repository Contents
 
@@ -78,7 +78,17 @@ For detailed installation instructions, configuration options, troubleshooting, 
 
 ## 📄 **License**
 
-## 🆕 Latest Features (Version 2.6.2)
+## 🆕 Latest Features (Version 2.6.3)
+
+### 🐛 **Health Monitor & Cleanup Fixes**
+- **Fixed Delivery Rate Calculation**: Corrected status value queries to use 'sent' and 'delivered' instead of non-existent 'success' status
+- **Added Time Period Selection**: Implemented 1 hour, 24 hours, and 7 days time period selection for metrics
+- **Real-time Metrics Updates**: Added AJAX-powered refresh functionality for dynamic metric updates
+- **Fixed Table Existence Checks**: Added proper table existence checks before attempting cleanup operations
+- **Prevented Database Errors**: Eliminated "Table doesn't exist" errors when running cleanup functions
+- **Accurate Delivery Rates**: Fixed calculation to show actual email delivery percentages
+
+## 🆕 Previous Features (Version 2.6.2)
 
 ### 🐛 **Health Monitor Bug Fix**
 - **Fixed Queue Table Column Error**: Resolved "Unknown column 'updated_at'" error in health monitor queue processing check

@@ -616,6 +616,13 @@ class Emailit_Health_Monitor {
     }
 
     /**
+     * Get health metrics with specific time period
+     */
+    public function get_metrics_with_time_period($time_period = '1h') {
+        return $this->metrics_collector->get_metrics_with_time_period($time_period);
+    }
+
+    /**
      * Get health history
      */
     public function get_health_history($request) {

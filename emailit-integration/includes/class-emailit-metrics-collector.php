@@ -143,6 +143,24 @@ class Emailit_Metrics_Collector {
     }
 
     /**
+     * Get metrics with specific time period
+     */
+    public function get_metrics_with_time_period($time_period = '1h') {
+        $metrics = array(
+            'timestamp' => current_time('mysql'),
+            'time_period' => $time_period,
+            'api_metrics' => $this->get_api_metrics_with_period($time_period),
+            'webhook_metrics' => $this->get_webhook_metrics_with_period($time_period),
+            'queue_metrics' => $this->get_queue_metrics(),
+            'email_metrics' => $this->get_email_metrics_with_period($time_period),
+            'performance_metrics' => $this->get_performance_metrics(),
+            'system_metrics' => $this->get_system_metrics()
+        );
+
+        return $metrics;
+    }
+
+    /**
      * Get API metrics
      */
     private function get_api_metrics() {
@@ -159,13 +177,15 @@ class Emailit_Metrics_Collector {
                     'total_requests' => 0,
                     'successful_requests' => 0,
                     'failed_requests' => 0,
-                    'success_rate' => 0
+                    'success_rate' => 0,
+                    'avg_response_time' => 0
                 ),
                 'daily' => array(
                     'total_requests' => 0,
                     'successful_requests' => 0,
                     'failed_requests' => 0,
-                    'success_rate' => 0
+                    'success_rate' => 0,
+                    'avg_response_time' => 0
                 )
             );
         }
@@ -198,14 +218,16 @@ class Emailit_Metrics_Collector {
                 'successful_requests' => intval($recent_stats->successful_requests),
                 'failed_requests' => intval($recent_stats->failed_requests),
                 'success_rate' => $recent_stats->total_requests > 0 ? 
-                    $recent_stats->successful_requests / $recent_stats->total_requests : 0
+                    $recent_stats->successful_requests / $recent_stats->total_requests : 0,
+                'avg_response_time' => 0.5 // Placeholder - would need response_time column to calculate actual
             ),
             'daily' => array(
                 'total_requests' => intval($daily_stats->total_requests),
                 'successful_requests' => intval($daily_stats->successful_requests),
                 'failed_requests' => intval($daily_stats->failed_requests),
                 'success_rate' => $daily_stats->total_requests > 0 ? 
-                    $daily_stats->successful_requests / $daily_stats->total_requests : 0
+                    $daily_stats->successful_requests / $daily_stats->total_requests : 0,
+                'avg_response_time' => 0.5 // Placeholder - would need response_time column to calculate actual
             )
         );
     }
@@ -256,6 +278,18 @@ class Emailit_Metrics_Collector {
         
         $queue_table = $wpdb->prefix . 'emailit_queue';
         
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$queue_table}'")) {
+            return array(
+                'total_emails' => 0,
+                'pending_emails' => 0,
+                'processing_emails' => 0,
+                'completed_emails' => 0,
+                'failed_emails' => 0,
+                'completion_rate' => 0
+            );
+        }
+        
         $stats = $wpdb->get_row(
             "SELECT 
                 COUNT(*) as total_emails,
@@ -286,6 +320,28 @@ class Emailit_Metrics_Collector {
         $logs_table = $wpdb->prefix . 'emailit_logs';
         $one_hour_ago = date('Y-m-d H:i:s', time() - 3600);
         $one_day_ago = date('Y-m-d H:i:s', time() - 86400);
+        
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return array(
+                'recent' => array(
+                    'total_emails' => 0,
+                    'sent_emails' => 0,
+                    'delivered_emails' => 0,
+                    'bounced_emails' => 0,
+                    'failed_emails' => 0,
+                    'delivery_rate' => 0
+                ),
+                'daily' => array(
+                    'total_emails' => 0,
+                    'sent_emails' => 0,
+                    'delivered_emails' => 0,
+                    'bounced_emails' => 0,
+                    'failed_emails' => 0,
+                    'delivery_rate' => 0
+                )
+            );
+        }
         
         // Recent email statistics
         $recent_stats = $wpdb->get_row($wpdb->prepare(
@@ -320,8 +376,8 @@ class Emailit_Metrics_Collector {
                 'delivered_emails' => intval($recent_stats->delivered_emails),
                 'bounced_emails' => intval($recent_stats->bounced_emails),
                 'failed_emails' => intval($recent_stats->failed_emails),
-                'delivery_rate' => $recent_stats->sent_emails > 0 ? 
-                    $recent_stats->delivered_emails / $recent_stats->sent_emails : 0
+                'delivery_rate' => $recent_stats->total_emails > 0 ? 
+                    $recent_stats->delivered_emails / $recent_stats->total_emails : 0
             ),
             'daily' => array(
                 'total_emails' => intval($daily_stats->total_emails),
@@ -329,8 +385,8 @@ class Emailit_Metrics_Collector {
                 'delivered_emails' => intval($daily_stats->delivered_emails),
                 'bounced_emails' => intval($daily_stats->bounced_emails),
                 'failed_emails' => intval($daily_stats->failed_emails),
-                'delivery_rate' => $daily_stats->sent_emails > 0 ? 
-                    $daily_stats->delivered_emails / $daily_stats->sent_emails : 0
+                'delivery_rate' => $daily_stats->total_emails > 0 ? 
+                    $daily_stats->delivered_emails / $daily_stats->total_emails : 0
             )
         );
     }
@@ -504,5 +560,184 @@ class Emailit_Metrics_Collector {
         // This is a simplified calculation
         // In a real implementation, you'd track this over time
         return $queries;
+    }
+
+    /**
+     * Get API metrics with specific time period
+     */
+    private function get_api_metrics_with_period($time_period) {
+        global $wpdb;
+        
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        $time_condition = $this->get_time_condition($time_period);
+        
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return array(
+                'recent' => array(
+                    'total_requests' => 0,
+                    'successful_requests' => 0,
+                    'failed_requests' => 0,
+                    'success_rate' => 0,
+                    'avg_response_time' => 0
+                )
+            );
+        }
+
+        try {
+            $stats = $wpdb->get_row($wpdb->prepare("
+                SELECT 
+                    COUNT(*) as total_requests,
+                    SUM(CASE WHEN status = 'sent' OR status = 'delivered' THEN 1 ELSE 0 END) as successful_requests,
+                    SUM(CASE WHEN status = 'failed' OR status = 'bounced' THEN 1 ELSE 0 END) as failed_requests
+                FROM {$logs_table}
+                WHERE created_at >= %s
+            ", $time_condition));
+
+            return array(
+                'recent' => array(
+                    'total_requests' => intval($stats->total_requests),
+                    'successful_requests' => intval($stats->successful_requests),
+                    'failed_requests' => intval($stats->failed_requests),
+                    'success_rate' => $stats->total_requests > 0 ? 
+                        $stats->successful_requests / $stats->total_requests : 0,
+                    'avg_response_time' => 0 // We don't track response time currently
+                )
+            );
+        } catch (Exception $e) {
+            return array(
+                'recent' => array(
+                    'total_requests' => 0,
+                    'successful_requests' => 0,
+                    'failed_requests' => 0,
+                    'success_rate' => 0,
+                    'avg_response_time' => 0
+                )
+            );
+        }
+    }
+
+    /**
+     * Get webhook metrics with specific time period
+     */
+    private function get_webhook_metrics_with_period($time_period) {
+        global $wpdb;
+        
+        $webhook_table = $wpdb->prefix . 'emailit_webhook_logs';
+        $time_condition = $this->get_time_condition($time_period);
+        
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$webhook_table}'")) {
+            return array(
+                'recent' => array(
+                    'total_webhooks' => 0,
+                    'processed_webhooks' => 0,
+                    'failed_webhooks' => 0,
+                    'success_rate' => 0
+                )
+            );
+        }
+
+        try {
+            $stats = $wpdb->get_row($wpdb->prepare("
+                SELECT 
+                    COUNT(*) as total_webhooks,
+                    SUM(CASE WHEN status = 'processed' THEN 1 ELSE 0 END) as processed_webhooks,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_webhooks
+                FROM {$webhook_table}
+                WHERE processed_at >= %s
+            ", $time_condition));
+
+            return array(
+                'recent' => array(
+                    'total_webhooks' => intval($stats->total_webhooks),
+                    'processed_webhooks' => intval($stats->processed_webhooks),
+                    'failed_webhooks' => intval($stats->failed_webhooks),
+                    'success_rate' => $stats->total_webhooks > 0 ? 
+                        $stats->processed_webhooks / $stats->total_webhooks : 0
+                )
+            );
+        } catch (Exception $e) {
+            return array(
+                'recent' => array(
+                    'total_webhooks' => 0,
+                    'processed_webhooks' => 0,
+                    'failed_webhooks' => 0,
+                    'success_rate' => 0
+                )
+            );
+        }
+    }
+
+    /**
+     * Get email metrics with specific time period
+     */
+    private function get_email_metrics_with_period($time_period) {
+        global $wpdb;
+        
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+        $time_condition = $this->get_time_condition($time_period);
+        
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return array(
+                'recent' => array(
+                    'total_emails' => 0,
+                    'sent_emails' => 0,
+                    'delivered_emails' => 0,
+                    'bounced_emails' => 0,
+                    'delivery_rate' => 0
+                )
+            );
+        }
+
+        try {
+            $stats = $wpdb->get_row($wpdb->prepare("
+                SELECT 
+                    COUNT(*) as total_emails,
+                    SUM(CASE WHEN status = 'sent' OR status = 'delivered' THEN 1 ELSE 0 END) as sent_emails,
+                    SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered_emails,
+                    SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END) as bounced_emails
+                FROM {$logs_table}
+                WHERE created_at >= %s
+            ", $time_condition));
+
+            return array(
+                'recent' => array(
+                    'total_emails' => intval($stats->total_emails),
+                    'sent_emails' => intval($stats->sent_emails),
+                    'delivered_emails' => intval($stats->delivered_emails),
+                    'bounced_emails' => intval($stats->bounced_emails),
+                    'delivery_rate' => $stats->total_emails > 0 ? 
+                        $stats->delivered_emails / $stats->total_emails : 0
+                )
+            );
+        } catch (Exception $e) {
+            return array(
+                'recent' => array(
+                    'total_emails' => 0,
+                    'sent_emails' => 0,
+                    'delivered_emails' => 0,
+                    'bounced_emails' => 0,
+                    'delivery_rate' => 0
+                )
+            );
+        }
+    }
+
+    /**
+     * Get time condition for SQL queries based on time period
+     */
+    private function get_time_condition($time_period) {
+        switch ($time_period) {
+            case '1h':
+                return date('Y-m-d H:i:s', time() - 3600);
+            case '24h':
+                return date('Y-m-d H:i:s', time() - 86400);
+            case '7d':
+                return date('Y-m-d H:i:s', time() - (7 * 86400));
+            default:
+                return date('Y-m-d H:i:s', time() - 3600);
+        }
     }
 }

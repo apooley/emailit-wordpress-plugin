@@ -87,6 +87,7 @@ class Emailit_Admin {
         add_action('wp_ajax_emailit_health_check', array($this, 'ajax_health_check'));
         add_action('wp_ajax_emailit_cleanup_health_data', array($this, 'ajax_cleanup_health_data'));
         add_action('wp_ajax_emailit_optimize_health_tables', array($this, 'ajax_optimize_health_tables'));
+        add_action('wp_ajax_emailit_get_health_metrics', array($this, 'ajax_get_health_metrics'));
 
         // Add admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
@@ -2404,6 +2405,31 @@ class Emailit_Admin {
         try {
             Emailit_Health_Migration::optimize_tables();
             wp_send_json_success(array('message' => __('Health monitoring tables optimized successfully.', 'emailit-integration')));
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
+    }
+
+    /**
+     * AJAX handler for getting health metrics with time period
+     */
+    public function ajax_get_health_metrics() {
+        check_ajax_referer('emailit_health_metrics', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $time_period = sanitize_text_field($_POST['time_period'] ?? '1h');
+            $health_monitor = emailit_get_component('health_monitor');
+            
+            if (!$health_monitor) {
+                wp_send_json_error(array('message' => __('Health monitoring is not available.', 'emailit-integration')));
+            }
+            
+            // Get metrics with time period
+            $metrics = $health_monitor->get_metrics_with_time_period($time_period);
+            wp_send_json_success($metrics);
         } catch (Exception $e) {
             wp_send_json_error(array('message' => $e->getMessage()));
         }
