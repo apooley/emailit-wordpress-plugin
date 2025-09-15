@@ -1,8 +1,36 @@
 # Emailit Integration for WordPress
 
-**Version 2.4.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, and a complete admin interface with enterprise-grade security.
+**Version 2.5.0** - A comprehensive WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, providing enhanced email delivery, logging, webhook status updates, FluentCRM integration, database optimization, and a complete admin interface with enterprise-grade security.
 
 ## 🚀 Recent Updates
+
+### Version 2.5.0 - FluentCRM Action Mapping & Soft Bounce Management
+
+### 🎯 **FluentCRM Action Mapping System**
+- **Intelligent Bounce Processing**: Automatic FluentCRM subscriber actions based on bounce classifications
+- **Action Mapping**: Maps bounce types to FluentCRM subscriber status updates
+- **Confidence Thresholds**: Configurable confidence levels for automatic actions
+- **Auto-Create Subscribers**: Optional automatic subscriber creation for bounced emails
+- **Comprehensive Logging**: Detailed action logging and error tracking
+
+### 📊 **Soft Bounce Threshold Management**
+- **Configurable Thresholds**: Customizable soft bounce limits (1-50 bounces)
+- **Time Window Management**: Configurable counting periods (1-30 days)
+- **Automatic Escalation**: Soft bounces escalate to hard bounces after threshold
+- **Success Reset**: Automatic bounce count reset on successful deliveries
+- **Bounce History**: Detailed tracking of bounce events with timestamps and reasons
+
+### 🔧 **Enhanced Admin Interface**
+- **Real-time Statistics**: Live dashboard showing bounce metrics and threshold monitoring
+- **Management Tools**: AJAX-powered bounce management and subscriber reset functions
+- **Visual Indicators**: Color-coded warnings for subscribers approaching bounce limits
+- **Settings Panel**: Comprehensive configuration interface for all bounce management options
+
+### ⚡ **Performance & Reliability**
+- **Conditional Loading**: All FluentCRM functionality only loads when FluentCRM is available
+- **Error Handling**: Graceful degradation when FluentCRM is not installed
+- **Database Optimization**: Efficient queries for bounce statistics and subscriber management
+- **Memory Management**: Optimized data structures for large subscriber lists
 
 ### Version 2.4.0 - Database Optimization & Performance Enhancement
 
@@ -14,7 +42,7 @@
 - **Automatic Cleanup**: Orphaned record removal and old data archiving tools
 
 ### 📊 **Enhanced Admin Interface**
-- **Database Optimizer Page**: Complete database maintenance tools (Tools → DB Optimizer)
+- **Performance Status**: Simple performance indicators and quick maintenance tools in main settings
 - **Performance Metrics**: Real-time database size, row counts, and query performance
 - **Maintenance Tools**: Table optimization, index management, and cleanup utilities
 - **Query Analysis**: Slow query detection and optimization recommendations
@@ -126,11 +154,11 @@
 - **📊 Professional Dashboard**: Tabbed interface with comprehensive settings
 - **📈 Real-time Statistics**: Email delivery rates and performance metrics
 - **🔧 Queue Management**: Manual queue processing and statistics
-- **📋 Email Logs**: Searchable logs with filtering and export functionality
+- **📋 Emailit Log**: Searchable logs with filtering and export functionality
 - **🧪 Testing Tools**: Built-in email testing and diagnostic functionality
 - **⚠️ Conflict Detection**: Automatic detection of conflicting plugins
 - **🔄 Status Tracking**: Real-time webhook status updates
-- **🗄️ Database Optimizer**: Complete database maintenance and performance tools
+- **⚡ Performance Status**: Simple performance indicators and quick maintenance tools
 - **📊 Performance Monitoring**: Real-time database statistics and query analysis
 
 ## Requirements
@@ -166,7 +194,7 @@
 3. **Enable Queue Processing** (optional): Enable asynchronous email sending for better performance
 4. **Test Configuration**: Use the Test tab to send a test email
 5. **Configure Webhooks**: Copy the webhook URL to your Emailit dashboard
-6. **Review Logs**: Check the Email Logs page to monitor email delivery
+6. **Review Logs**: Check the Emailit Log page to monitor email delivery
 
 ## Configuration
 
@@ -306,11 +334,11 @@ Simplified status tracking:
 
 ## Admin Interface
 
-### Email Logs
+### Emailit Log
 
 View and manage all sent emails:
 
-- **Access**: Tools → Email Logs
+- **Access**: Tools → Emailit Log
 - **Features**:
   - Search and filter by status, date, recipient
   - View detailed email content and headers
@@ -339,20 +367,16 @@ Monitor email performance:
 - Performance metrics and trends
 - Queue processing statistics
 
-### Database Optimizer
+### Performance Status
 
-Complete database maintenance and performance tools:
+Simple performance indicators and maintenance tools:
 
-- **Access**: Tools → DB Optimizer
+- **Access**: Settings → Emailit → Performance tab
 - **Features**:
-  - Real-time database statistics (table sizes, row counts, performance metrics)
-  - Table optimization tools to reclaim space and improve performance
-  - Automatic index management and performance index addition
-  - Orphaned record cleanup (webhook logs, queue items)
-  - Old record archiving to reduce database size
-  - Query cache management and clearing
-  - Slow query analysis and optimization recommendations
-  - Performance monitoring and maintenance scheduling
+  - Database optimization status indicators
+  - Query caching status
+  - Index status monitoring
+  - Quick maintenance tools (clean logs, optimize database, clear cache)
 
 ## Webhook Events
 
@@ -701,7 +725,7 @@ add_action('emailit_cache_cleared', 'cache_cleared', 10, 1);
    - Monitor queue processing frequency
 
 6. **Database Performance Issues**
-   - Use Database Optimizer tools (Tools → DB Optimizer)
+   - Use Performance Status tools (Settings → Emailit → Performance tab)
    - Run table optimization to reclaim space
    - Add missing performance indexes
    - Clean up orphaned records
@@ -712,7 +736,7 @@ add_action('emailit_cache_cleared', 'cache_cleared', 10, 1);
 
 1. **Enable Debug Logging**: Add `WP_DEBUG` constants to wp-config.php
 2. **Use Built-in Tests**: Test API connectivity and webhook functionality
-3. **Check Email Logs**: Review detailed error messages and context
+3. **Check Emailit Log**: Review detailed error messages and context
 4. **Monitor Webhooks**: Check webhook logs for delivery and signature issues
 5. **Verify Settings**: Double-check all configuration settings
 6. **Test Queue**: Use manual queue processing to isolate issues
@@ -737,17 +761,45 @@ For support, bug reports, and feature requests:
 
 ## Changelog
 
+### Version 2.5.0 - FluentCRM Action Mapping & Soft Bounce Management
+
+**🎯 FluentCRM Action Mapping System:**
+- **Intelligent Bounce Processing**: Automatic FluentCRM subscriber actions based on bounce classifications
+- **Action Mapping**: Maps bounce types to FluentCRM subscriber status updates (hard bounces → unsubscribed, soft bounces → tracked, spam complaints → complained)
+- **Confidence Thresholds**: Configurable confidence levels (0-100%) for automatic actions
+- **Auto-Create Subscribers**: Optional automatic subscriber creation for bounced emails
+- **Comprehensive Logging**: Detailed action logging and error tracking
+
+**📊 Soft Bounce Threshold Management:**
+- **Configurable Thresholds**: Customizable soft bounce limits (1-50 bounces, default: 5)
+- **Time Window Management**: Configurable counting periods (1-30 days, default: 7)
+- **Automatic Escalation**: Soft bounces escalate to hard bounces after threshold exceeded
+- **Success Reset**: Automatic bounce count reset on successful deliveries (configurable)
+- **Bounce History**: Detailed tracking of bounce events with timestamps, reasons, and classification data
+
+**🔧 Enhanced Admin Interface:**
+- **Real-time Statistics**: Live dashboard showing bounce metrics and threshold monitoring
+- **Management Tools**: AJAX-powered bounce management and subscriber reset functions
+- **Visual Indicators**: Color-coded warnings for subscribers approaching bounce limits
+- **Settings Panel**: Comprehensive configuration interface for all bounce management options
+
+**⚡ Performance & Reliability:**
+- **Conditional Loading**: All FluentCRM functionality only loads when FluentCRM is available
+- **Error Handling**: Graceful degradation when FluentCRM is not installed
+- **Database Optimization**: Efficient queries for bounce statistics and subscriber management
+- **Memory Management**: Optimized data structures for large subscriber lists
+
 ### Version 2.4.0 - Database Optimization & Performance Enhancement
 
 **🚀 Database Performance Optimization:**
 - **Strategic Indexing**: Added 15+ performance indexes across all database tables for 3-5x faster queries
 - **Query Optimization**: Implemented intelligent query caching and optimization with 2-5 minute cache periods
-- **Database Tools**: New admin interface for database maintenance and monitoring (Tools → DB Optimizer)
+- **Performance Status**: Simple performance indicators and maintenance tools in main settings
 - **Performance Monitoring**: Real-time database statistics and slow query analysis
 - **Automatic Cleanup**: Orphaned record removal and old data archiving tools
 
 **📊 Enhanced Admin Interface:**
-- **Database Optimizer Page**: Complete database maintenance tools with real-time statistics
+- **Performance Status Section**: Simple performance indicators and quick maintenance tools
 - **Performance Metrics**: Database size, row counts, and query performance monitoring
 - **Maintenance Tools**: Table optimization, index management, and cleanup utilities
 - **Query Analysis**: Slow query detection and optimization recommendations

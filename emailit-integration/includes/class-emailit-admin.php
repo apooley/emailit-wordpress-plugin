@@ -72,6 +72,16 @@ class Emailit_Admin {
         add_action('wp_ajax_emailit_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_emailit_export_logs', array($this, 'ajax_export_logs'));
         add_action('wp_ajax_emailit_test_webhook', array($this, 'ajax_test_webhook'));
+        add_action('wp_ajax_emailit_clean_old_logs', array($this, 'ajax_clean_old_logs'));
+        add_action('wp_ajax_emailit_optimize_database', array($this, 'ajax_optimize_database'));
+        add_action('wp_ajax_emailit_clear_cache', array($this, 'ajax_clear_cache'));
+
+        // FluentCRM soft bounce management AJAX handlers (only if FluentCRM is available)
+        if ($this->is_fluentcrm_available()) {
+            add_action('wp_ajax_emailit_get_soft_bounce_stats', array($this, 'ajax_get_soft_bounce_stats'));
+            add_action('wp_ajax_emailit_reset_subscriber_bounce', array($this, 'ajax_reset_subscriber_bounce'));
+            add_action('wp_ajax_emailit_get_subscriber_bounce_details', array($this, 'ajax_get_subscriber_bounce_details'));
+        }
 
         // Add admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
@@ -106,22 +116,13 @@ class Emailit_Admin {
         // Logs submenu
         add_submenu_page(
             'tools.php',
-            __('Email Logs', 'emailit-integration'),
-            __('Email Logs', 'emailit-integration'),
+            __('Emailit Log', 'emailit-integration'),
+            __('Emailit Log', 'emailit-integration'),
             'manage_options',
             $this->logs_page,
             array($this, 'logs_page_callback')
         );
 
-        // Database Optimizer submenu
-        add_submenu_page(
-            'tools.php',
-            __('Database Optimizer', 'emailit-integration'),
-            __('DB Optimizer', 'emailit-integration'),
-            'manage_options',
-            'emailit-db-optimizer',
-            array($this, 'db_optimizer_page_callback')
-        );
     }
 
     /**
@@ -256,6 +257,50 @@ class Emailit_Admin {
                 'type' => 'string',
                 'sanitize_callback' => 'sanitize_text_field',
                 'default' => 'unsubscribe'
+            ));
+
+            // Action mapping settings
+            register_setting('emailit-settings', 'emailit_fluentcrm_enable_action_mapping', array(
+                'type' => 'boolean',
+                'sanitize_callback' => 'rest_sanitize_boolean',
+                'default' => true
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_auto_create_subscribers', array(
+                'type' => 'boolean',
+                'sanitize_callback' => 'rest_sanitize_boolean',
+                'default' => true
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_confidence_threshold', array(
+                'type' => 'integer',
+                'sanitize_callback' => 'absint',
+                'default' => 70
+            ));
+
+            // Soft bounce threshold management settings
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_threshold', array(
+                'type' => 'integer',
+                'sanitize_callback' => 'absint',
+                'default' => 5
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_window', array(
+                'type' => 'integer',
+                'sanitize_callback' => 'absint',
+                'default' => 7
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_reset_on_success', array(
+                'type' => 'boolean',
+                'sanitize_callback' => 'rest_sanitize_boolean',
+                'default' => true
+            ));
+
+            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_history_limit', array(
+                'type' => 'integer',
+                'sanitize_callback' => 'absint',
+                'default' => 10
             ));
         }
 
@@ -494,6 +539,57 @@ class Emailit_Admin {
                 'emailit-settings',
                 'emailit_fluentcrm_section'
             );
+
+            // Action mapping fields
+            add_settings_field(
+                'emailit_fluentcrm_enable_action_mapping',
+                __('Enable Action Mapping', 'emailit-integration'),
+                array($this, 'fluentcrm_enable_action_mapping_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_auto_create_subscribers',
+                __('Auto-Create Subscribers', 'emailit-integration'),
+                array($this, 'fluentcrm_auto_create_subscribers_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_confidence_threshold',
+                __('Confidence Threshold', 'emailit-integration'),
+                array($this, 'fluentcrm_confidence_threshold_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            // Soft bounce threshold management fields
+
+            add_settings_field(
+                'emailit_fluentcrm_soft_bounce_window',
+                __('Soft Bounce Window (Days)', 'emailit-integration'),
+                array($this, 'fluentcrm_soft_bounce_window_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_soft_bounce_reset_on_success',
+                __('Reset on Successful Delivery', 'emailit-integration'),
+                array($this, 'fluentcrm_soft_bounce_reset_on_success_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
+
+            add_settings_field(
+                'emailit_fluentcrm_soft_bounce_history_limit',
+                __('Bounce History Limit', 'emailit-integration'),
+                array($this, 'fluentcrm_soft_bounce_history_limit_field_callback'),
+                'emailit-settings',
+                'emailit_fluentcrm_section'
+            );
         }
     }
 
@@ -509,13 +605,6 @@ class Emailit_Admin {
      */
     public function logs_page_callback() {
         include EMAILIT_PLUGIN_DIR . 'admin/views/logs.php';
-    }
-
-    /**
-     * Database Optimizer page callback
-     */
-    public function db_optimizer_page_callback() {
-        include EMAILIT_PLUGIN_DIR . 'admin/views/database-optimizer.php';
     }
 
     /**
@@ -770,15 +859,6 @@ class Emailit_Admin {
         echo '<p class="description">' . __('Action to take when FluentCRM detects a soft bounce (temporary failure).', 'emailit-integration') . '</p>';
     }
 
-    public function fluentcrm_soft_bounce_threshold_field_callback() {
-        $value = get_option('emailit_fluentcrm_soft_bounce_threshold', 5);
-        $webhook = emailit_get_component('webhook');
-        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
-        
-        echo '<input type="number" id="emailit_fluentcrm_soft_bounce_threshold" name="emailit_fluentcrm_soft_bounce_threshold" value="' . esc_attr($value) . '" min="1" max="20" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
-        echo '<p class="description">' . __('Number of soft bounces before escalating to hard bounce. Range: 1-20.', 'emailit-integration') . '</p>';
-    }
-
     public function fluentcrm_complaint_action_field_callback() {
         $value = get_option('emailit_fluentcrm_complaint_action', 'unsubscribe');
         $webhook = emailit_get_component('webhook');
@@ -796,6 +876,76 @@ class Emailit_Admin {
         }
         echo '</select>';
         echo '<p class="description">' . __('Action to take when FluentCRM detects a spam complaint.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_enable_action_mapping_field_callback() {
+        $value = get_option('emailit_fluentcrm_enable_action_mapping', true);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_enable_action_mapping" name="emailit_fluentcrm_enable_action_mapping" value="1"' . 
+             checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_enable_action_mapping">' . __('Enable automatic FluentCRM actions based on bounce classifications', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Automatically update FluentCRM subscriber status based on Emailit bounce classifications.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_auto_create_subscribers_field_callback() {
+        $value = get_option('emailit_fluentcrm_auto_create_subscribers', true);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_auto_create_subscribers" name="emailit_fluentcrm_auto_create_subscribers" value="1"' . 
+             checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_auto_create_subscribers">' . __('Automatically create FluentCRM subscribers for bounced emails', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Create new FluentCRM subscribers when processing bounces for unknown email addresses.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_confidence_threshold_field_callback() {
+        $value = get_option('emailit_fluentcrm_confidence_threshold', 70);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="number" id="emailit_fluentcrm_confidence_threshold" name="emailit_fluentcrm_confidence_threshold" value="' . esc_attr($value) . '" min="0" max="100" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_confidence_threshold">%</label>';
+        echo '<p class="description">' . __('Minimum confidence level required to trigger FluentCRM actions (0-100%). Lower confidence bounces will be logged for manual review.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_threshold_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_threshold', 5);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="number" id="emailit_fluentcrm_soft_bounce_threshold" name="emailit_fluentcrm_soft_bounce_threshold" value="' . esc_attr($value) . '" min="1" max="50" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo '<p class="description">' . __('Number of soft bounces before escalating to hard bounce (1-50).', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_window_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_window', 7);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="number" id="emailit_fluentcrm_soft_bounce_window" name="emailit_fluentcrm_soft_bounce_window" value="' . esc_attr($value) . '" min="1" max="30" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo '<p class="description">' . __('Time window in days for counting soft bounces (1-30).', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_reset_on_success_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_reset_on_success', true);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="checkbox" id="emailit_fluentcrm_soft_bounce_reset_on_success" name="emailit_fluentcrm_soft_bounce_reset_on_success" value="1"' . 
+             checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_fluentcrm_soft_bounce_reset_on_success">' . __('Reset soft bounce count when email is successfully delivered', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Automatically reset the soft bounce counter when a successful delivery is detected.', 'emailit-integration') . '</p>';
+    }
+
+    public function fluentcrm_soft_bounce_history_limit_field_callback() {
+        $value = get_option('emailit_fluentcrm_soft_bounce_history_limit', 10);
+        $webhook = emailit_get_component('webhook');
+        $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
+        
+        echo '<input type="number" id="emailit_fluentcrm_soft_bounce_history_limit" name="emailit_fluentcrm_soft_bounce_history_limit" value="' . esc_attr($value) . '" min="5" max="50" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
+        echo '<p class="description">' . __('Maximum number of bounce records to keep in history per subscriber (5-50).', 'emailit-integration') . '</p>';
     }
 
     /**
@@ -1419,6 +1569,180 @@ class Emailit_Admin {
     }
 
     /**
+     * AJAX handler for cleaning old logs
+     */
+    public function ajax_clean_old_logs() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $db_optimizer = emailit_get_component('db_optimizer');
+            if (!$db_optimizer) {
+                wp_send_json_error(array(
+                    'message' => __('Database optimizer not available.', 'emailit-integration')
+                ));
+            }
+
+            $cleaned = $db_optimizer->cleanup_orphaned_records();
+            $message = sprintf(__('Cleaned up %d orphaned records.', 'emailit-integration'), count($cleaned));
+            
+            wp_send_json_success(array('message' => $message));
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => sprintf(__('Error cleaning logs: %s', 'emailit-integration'), $e->getMessage())
+            ));
+        }
+    }
+
+    /**
+     * AJAX handler for optimizing database
+     */
+    public function ajax_optimize_database() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $db_optimizer = emailit_get_component('db_optimizer');
+            if (!$db_optimizer) {
+                wp_send_json_error(array(
+                    'message' => __('Database optimizer not available.', 'emailit-integration')
+                ));
+            }
+
+            $results = $db_optimizer->optimize_tables();
+            $message = __('Database tables optimized successfully.', 'emailit-integration');
+            
+            wp_send_json_success(array('message' => $message));
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => sprintf(__('Error optimizing database: %s', 'emailit-integration'), $e->getMessage())
+            ));
+        }
+    }
+
+    /**
+     * AJAX handler for clearing cache
+     */
+    public function ajax_clear_cache() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $query_optimizer = emailit_get_component('query_optimizer');
+            if ($query_optimizer) {
+                $query_optimizer->clear_cache();
+            }
+
+            // Clear WordPress transients
+            delete_transient('emailit_api_key_validation');
+            delete_transient('emailit_queue_stats');
+            delete_transient('emailit_performance_stats');
+            
+            wp_send_json_success(array('message' => __('Cache cleared successfully.', 'emailit-integration')));
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => sprintf(__('Error clearing cache: %s', 'emailit-integration'), $e->getMessage())
+            ));
+        }
+    }
+
+    /**
+     * AJAX handler for getting soft bounce statistics
+     */
+    public function ajax_get_soft_bounce_stats() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        try {
+            $fluentcrm_handler = emailit_get_component('fluentcrm_handler');
+            if (!$fluentcrm_handler || !$fluentcrm_handler->is_available()) {
+                wp_send_json_error(array('message' => __('FluentCRM handler not available.', 'emailit-integration')));
+            }
+
+            $stats = $fluentcrm_handler->get_soft_bounce_statistics();
+            wp_send_json_success($stats);
+
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => sprintf(__('Error getting soft bounce stats: %s', 'emailit-integration'), $e->getMessage())));
+        }
+    }
+
+    /**
+     * AJAX handler for resetting subscriber bounce count
+     */
+    public function ajax_reset_subscriber_bounce() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $subscriber_id = intval($_POST['subscriber_id'] ?? 0);
+        if (!$subscriber_id) {
+            wp_send_json_error(array('message' => __('Invalid subscriber ID.', 'emailit-integration')));
+        }
+
+        try {
+            $fluentcrm_handler = emailit_get_component('fluentcrm_handler');
+            if (!$fluentcrm_handler || !$fluentcrm_handler->is_available()) {
+                wp_send_json_error(array('message' => __('FluentCRM handler not available.', 'emailit-integration')));
+            }
+
+            $success = $fluentcrm_handler->reset_subscriber_bounce_count($subscriber_id);
+            if ($success) {
+                wp_send_json_success(array('message' => __('Subscriber bounce count reset successfully.', 'emailit-integration')));
+            } else {
+                wp_send_json_error(array('message' => __('Failed to reset subscriber bounce count.', 'emailit-integration')));
+            }
+
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => sprintf(__('Error resetting bounce count: %s', 'emailit-integration'), $e->getMessage())));
+        }
+    }
+
+    /**
+     * AJAX handler for getting subscriber bounce details
+     */
+    public function ajax_get_subscriber_bounce_details() {
+        check_ajax_referer('emailit_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions.', 'emailit-integration'));
+        }
+
+        $subscriber_id = intval($_POST['subscriber_id'] ?? 0);
+        if (!$subscriber_id) {
+            wp_send_json_error(array('message' => __('Invalid subscriber ID.', 'emailit-integration')));
+        }
+
+        try {
+            $fluentcrm_handler = emailit_get_component('fluentcrm_handler');
+            if (!$fluentcrm_handler || !$fluentcrm_handler->is_available()) {
+                wp_send_json_error(array('message' => __('FluentCRM handler not available.', 'emailit-integration')));
+            }
+
+            $details = $fluentcrm_handler->get_subscriber_bounce_details($subscriber_id);
+            if ($details) {
+                wp_send_json_success($details);
+            } else {
+                wp_send_json_error(array('message' => __('Subscriber not found or no bounce data available.', 'emailit-integration')));
+            }
+
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => sprintf(__('Error getting subscriber details: %s', 'emailit-integration'), $e->getMessage())));
+        }
+    }
+
+    /**
      * Admin notices
      */
     public function admin_notices() {
@@ -1766,96 +2090,96 @@ class Emailit_Admin {
     <title>' . esc_html__('WordPress Test Email - Emailit Integration', 'emailit-integration') . '</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8f9fa;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; padding: 20px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; padding: 10px 0;">
         <tr>
             <td align="center">
-                <table cellpadding="0" cellspacing="0" border="0" width="600" style="background-color: #ffffff;">
+                <table cellpadding="0" cellspacing="0" border="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                     <!-- Header -->
                     <tr>
-                        <td style="background: #d63384; padding: 40px 20px; text-align: center;">
-                            <h1 style="color: #ffffff; margin: 0 0 10px 0; font-size: 28px; font-weight: 600;">🔧 ' . esc_html__('WordPress wp_mail() Test', 'emailit-integration') . '</h1>
-                            <p style="color: #ffeef1; margin: 0; font-size: 16px;">' . esc_html__('Testing email interception and processing', 'emailit-integration') . '</p>
+                        <td style="background: #d63384; padding: 24px 20px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h1 style="color: #ffffff; margin: 0 0 8px 0; font-size: 24px; font-weight: 600;">🔧 ' . esc_html__('WordPress wp_mail() Test', 'emailit-integration') . '</h1>
+                            <p style="color: #ffeef1; margin: 0; font-size: 14px;">' . esc_html__('Testing email interception and processing', 'emailit-integration') . '</p>
                         </td>
                     </tr>
 
                     <!-- Content -->
                     <tr>
-                        <td style="padding: 40px 30px;">
+                        <td style="padding: 24px 20px;">
                             <!-- Diagnostic Badge -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; margin: 20px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; margin: 0 0 16px 0;">
                                 <tr>
-                                    <td style="padding: 20px; text-align: center;">
-                                        <div style="font-size: 48px; margin-bottom: 10px; color: #fd7e14;">🔍</div>
-                                        <h2 style="color: #856404; margin: 0 0 10px 0; font-size: 24px;">' . esc_html__('Diagnostic Test Complete', 'emailit-integration') . '</h2>
-                                        <p style="color: #856404; margin: 0; font-size: 16px;">' . esc_html__('This email was sent through WordPress wp_mail() function', 'emailit-integration') . '</p>
+                                    <td style="padding: 16px; text-align: center;">
+                                        <div style="font-size: 32px; margin-bottom: 8px; color: #fd7e14;">🔍</div>
+                                        <h2 style="color: #856404; margin: 0 0 8px 0; font-size: 18px;">' . esc_html__('Diagnostic Test Complete', 'emailit-integration') . '</h2>
+                                        <p style="color: #856404; margin: 0; font-size: 14px;">' . esc_html__('This email was sent through WordPress wp_mail() function', 'emailit-integration') . '</p>
                                     </td>
                                 </tr>
                             </table>
 
-                            <p style="color: #495057; font-size: 16px; line-height: 1.6; margin: 20px 0;">' . sprintf(__('This test email was sent from <strong>%s</strong> using the standard WordPress wp_mail() function. If you received this email, it means the Emailit plugin successfully intercepted the wp_mail() call and routed it through the Emailit API.', 'emailit-integration'), esc_html($site_name)) . '</p>
+                            <p style="color: #495057; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">' . sprintf(__('This test email was sent from <strong>%s</strong> using the standard WordPress wp_mail() function. If you received this email, it means the Emailit plugin successfully intercepted the wp_mail() call and routed it through the Emailit API.', 'emailit-integration'), esc_html($site_name)) . '</p>
 
                             <!-- Technical Note -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 25px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 16px 0;">
                                 <tr>
-                                    <td style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 0 4px 4px 0;">
-                                        <h4 style="color: #1976d2; margin: 0 0 10px 0; font-size: 16px;">📋 ' . esc_html__('Technical Details', 'emailit-integration') . '</h4>
-                                        <p style="color: #1565c0; margin: 0; font-size: 14px; line-height: 1.4;">' . esc_html__('This test helps verify that the plugin properly hooks into WordPress\'s email system. The wp_mail() function is used by contact forms, user registration, password resets, and other WordPress features.', 'emailit-integration') . '</p>
+                                    <td style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; border-radius: 0 4px 4px 0;">
+                                        <h4 style="color: #1976d2; margin: 0 0 8px 0; font-size: 14px;">📋 ' . esc_html__('Technical Details', 'emailit-integration') . '</h4>
+                                        <p style="color: #1565c0; margin: 0; font-size: 13px; line-height: 1.4;">' . esc_html__('This test helps verify that the plugin properly hooks into WordPress\'s email system. The wp_mail() function is used by contact forms, user registration, password resets, and other WordPress features.', 'emailit-integration') . '</p>
                                     </td>
                                 </tr>
                             </table>
 
                             <!-- Info Card -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f8f9fa; border-radius: 6px; margin: 0 0 16px 0;">
                                 <tr>
-                                    <td style="padding: 20px;">
-                                        <h3 style="margin: 0 0 20px 0; color: #495057; font-size: 18px;">' . esc_html__('Test Information', 'emailit-integration') . '</h3>
+                                    <td style="padding: 16px;">
+                                        <h3 style="margin: 0 0 12px 0; color: #495057; font-size: 16px;">' . esc_html__('Test Information', 'emailit-integration') . '</h3>
 
                                         <table cellpadding="0" cellspacing="0" border="0" width="100%">
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057;">' . esc_html__('Website:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Website:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace;">
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
                                                     ' . esc_html($site_name) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057;">' . esc_html__('URL:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('URL:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace;">
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
                                                     ' . esc_html($site_url) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057;">' . esc_html__('Sent At:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Sent At:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace;">
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
                                                     ' . esc_html($current_time) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057;">' . esc_html__('Plugin Version:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Plugin Version:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace;">
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
                                                     v' . esc_html(EMAILIT_VERSION) . '
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef;">
-                                                    <strong style="color: #495057;">' . esc_html__('Method:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Method:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace;">
+                                                <td style="padding: 6px 0; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d; font-family: monospace; font-size: 13px;">
                                                     wp_mail() → Emailit API
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0;">
-                                                    <strong style="color: #495057;">' . esc_html__('Integration Status:', 'emailit-integration') . '</strong>
+                                                <td style="padding: 6px 0;">
+                                                    <strong style="color: #495057; font-size: 13px;">' . esc_html__('Integration Status:', 'emailit-integration') . '</strong>
                                                 </td>
-                                                <td style="padding: 8px 0; text-align: right; color: #28a745; font-family: monospace;">
+                                                <td style="padding: 6px 0; text-align: right; color: #28a745; font-family: monospace; font-size: 13px;">
                                                     ✅ Working
                                                 </td>
                                             </tr>
@@ -1864,13 +2188,13 @@ class Emailit_Admin {
                                 </tr>
                             </table>
 
-                            <p style="color: #495057; font-size: 16px; line-height: 1.6; margin: 30px 0;">🎯 ' . esc_html__('Perfect! Your WordPress site is properly integrated with Emailit. All plugins and features that send emails through wp_mail() will now be delivered via the Emailit service, providing better deliverability and tracking capabilities.', 'emailit-integration') . '</p>
+                            <p style="color: #495057; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">🎯 ' . esc_html__('Perfect! Your WordPress site is properly integrated with Emailit. All plugins and features that send emails through wp_mail() will now be delivered via the Emailit service, providing better deliverability and tracking capabilities.', 'emailit-integration') . '</p>
 
                             <!-- CTA Button -->
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 30px 0;">
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0;">
                                 <tr>
                                     <td align="center">
-                                        <a href="' . esc_url(admin_url('tools.php?page=emailit-logs')) . '" style="display: inline-block; background: #d63384; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">' . esc_html__('View Email Logs', 'emailit-integration') . '</a>
+                                        <a href="' . esc_url(admin_url('tools.php?page=emailit-logs')) . '" style="display: inline-block; background: #d63384; color: #ffffff; padding: 10px 20px; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 14px;">' . esc_html__('View Emailit Log', 'emailit-integration') . '</a>
                                     </td>
                                 </tr>
                             </table>
@@ -1879,13 +2203,13 @@ class Emailit_Admin {
 
                     <!-- Footer -->
                     <tr>
-                        <td style="background: #f8f9fa; padding: 30px; text-align: center; color: #6c757d; font-size: 14px;">
+                        <td style="background: #f8f9fa; padding: 16px; text-align: center; color: #6c757d; font-size: 12px; border-radius: 0 0 8px 8px;">
                             <p style="margin: 0;">' . sprintf(
                                 __('This diagnostic email was sent by the %s plugin. %s', 'emailit-integration'),
                                 '<strong>Emailit Integration</strong>',
                                 '<a href="https://emailit.com/docs" target="_blank" style="color: #007cba; text-decoration: none;">View Documentation</a>'
                             ) . '</p>
-                            <p style="margin: 10px 0 0 0; font-size: 12px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
+                            <p style="margin: 8px 0 0 0; font-size: 11px; color: #adb5bd;">' . esc_html__('This is an automated test email. Please do not reply.', 'emailit-integration') . '</p>
                         </td>
                     </tr>
                 </table>

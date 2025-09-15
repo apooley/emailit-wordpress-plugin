@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 2.4.0
+ * Version: 2.5.0
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '2.4.0');
+define('EMAILIT_VERSION', '2.5.0');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -51,6 +51,7 @@ class Emailit_Integration {
     private $admin = null;
     private $db_optimizer = null;
     private $query_optimizer = null;
+    private $fluentcrm_handler = null;
 
     /**
      * Get plugin instance
@@ -197,6 +198,11 @@ class Emailit_Integration {
 
         // Initialize webhook handler
         $this->webhook = new Emailit_Webhook($this->logger);
+
+        // Initialize FluentCRM handler (only if FluentCRM is available)
+        if (class_exists('FluentCrm\App\App')) {
+            $this->fluentcrm_handler = new Emailit_FluentCRM_Handler($this->logger);
+        }
 
         // Always initialize admin interface (it will handle admin-only functionality internally)
         $this->admin = new Emailit_Admin($this->api, $this->logger, $this->queue);
@@ -410,6 +416,12 @@ class Emailit_Integration {
             $this->migrate_to_2_1_0();
             update_option('emailit_db_version', '2.1.0');
         }
+
+        // Migration for version 2.5.0 - Add bounce classification columns
+        if (version_compare($current_db_version, '2.5.0', '<')) {
+            $this->migrate_to_2_5_0();
+            update_option('emailit_db_version', '2.5.0');
+        }
     }
 
     /**
@@ -447,6 +459,38 @@ class Emailit_Integration {
         
         if (!empty($indexes_added)) {
             error_log('[Emailit] Added performance indexes: ' . implode(', ', $indexes_added));
+        }
+    }
+
+    /**
+     * Migrate database to version 2.5.0 - Add bounce classification columns
+     */
+    private function migrate_to_2_5_0() {
+        global $wpdb;
+
+        $logs_table = $wpdb->prefix . 'emailit_logs';
+
+        // Check if bounce_classification column exists
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM `{$logs_table}` LIKE %s",
+            'bounce_classification'
+        ));
+
+        if (empty($column_exists)) {
+            // Add bounce classification columns
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_classification` VARCHAR(50) DEFAULT NULL AFTER `status`");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_category` VARCHAR(50) DEFAULT NULL AFTER `bounce_classification`");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_severity` VARCHAR(20) DEFAULT NULL AFTER `bounce_category`");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_confidence` TINYINT(3) UNSIGNED DEFAULT NULL AFTER `bounce_severity`");
+            
+            // Add indexes for bounce classification
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD INDEX `idx_bounce_classification` (`bounce_classification`)");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD INDEX `idx_bounce_category` (`bounce_category`)");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD INDEX `idx_bounce_severity` (`bounce_severity`)");
+
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Added bounce classification columns to email logs table');
+            }
         }
     }
 

@@ -164,6 +164,21 @@ class Emailit_Database_Optimizer {
             }
         }
 
+        // Email-specific metrics
+        $stats['emails_today'] = $this->get_emails_count('today');
+        $stats['emails_week'] = $this->get_emails_count('week');
+        $stats['emails_month'] = $this->get_emails_count('month');
+        
+        // Queue status
+        $stats['queue_pending'] = $this->get_queue_count('pending');
+        $stats['queue_processing'] = $this->get_queue_count('processing');
+        $stats['queue_failed'] = $this->get_queue_count('failed');
+        
+        // Email status breakdown
+        $stats['status_delivered'] = $this->get_status_count('delivered');
+        $stats['status_bounced'] = $this->get_status_count('bounced');
+        $stats['status_complained'] = $this->get_status_count('complained');
+
         // Index usage statistics
         $index_stats = $wpdb->get_results("
             SELECT 
@@ -181,6 +196,64 @@ class Emailit_Database_Optimizer {
         $stats['indexes'] = $index_stats;
 
         return $stats;
+    }
+
+    /**
+     * Get email count for specific time period
+     */
+    private function get_emails_count($period) {
+        global $wpdb;
+        
+        $where_clause = '';
+        switch ($period) {
+            case 'today':
+                $where_clause = "DATE(created_at) = CURDATE()";
+                break;
+            case 'week':
+                $where_clause = "created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+                break;
+            case 'month':
+                $where_clause = "created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+                break;
+        }
+        
+        $count = $wpdb->get_var("
+            SELECT COUNT(*) 
+            FROM {$this->logs_table} 
+            WHERE {$where_clause}
+        ");
+        
+        return (int) $count;
+    }
+
+    /**
+     * Get queue count for specific status
+     */
+    private function get_queue_count($status) {
+        global $wpdb;
+        
+        $count = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(*) 
+            FROM {$this->queue_table} 
+            WHERE status = %s
+        ", $status));
+        
+        return (int) $count;
+    }
+
+    /**
+     * Get email count for specific status
+     */
+    private function get_status_count($status) {
+        global $wpdb;
+        
+        $count = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(*) 
+            FROM {$this->logs_table} 
+            WHERE status = %s
+        ", $status));
+        
+        return (int) $count;
     }
 
     /**

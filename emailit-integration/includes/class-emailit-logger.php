@@ -172,6 +172,26 @@ class Emailit_Logger {
         if ($details !== null) {
             $update_data['details'] = is_array($details) ? wp_json_encode($details) : $details;
             $update_format[] = '%s';
+
+            // Extract bounce classification data if present
+            if (is_array($details)) {
+                if (isset($details['bounce_classification'])) {
+                    $update_data['bounce_classification'] = $details['bounce_classification'];
+                    $update_format[] = '%s';
+                }
+                if (isset($details['bounce_category'])) {
+                    $update_data['bounce_category'] = $details['bounce_category'];
+                    $update_format[] = '%s';
+                }
+                if (isset($details['bounce_severity'])) {
+                    $update_data['bounce_severity'] = $details['bounce_severity'];
+                    $update_format[] = '%s';
+                }
+                if (isset($details['bounce_confidence'])) {
+                    $update_data['bounce_confidence'] = (int) $details['bounce_confidence'];
+                    $update_format[] = '%d';
+                }
+            }
         }
 
         // Update delivered status timestamp

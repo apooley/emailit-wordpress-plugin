@@ -18,6 +18,11 @@ class Emailit_Webhook {
     private $logger;
 
     /**
+     * Bounce classifier instance
+     */
+    private $bounce_classifier;
+
+    /**
      * Webhook secret
      */
     private $webhook_secret;
@@ -34,6 +39,9 @@ class Emailit_Webhook {
     public function __construct($logger) {
         $this->logger = $logger;
         $this->webhook_secret = get_option('emailit_webhook_secret', '');
+
+        // Initialize bounce classifier
+        $this->bounce_classifier = new Emailit_Bounce_Classifier($logger);
 
         // Initialize FluentCRM integration if available
         $this->init_fluentcrm_integration();
@@ -462,6 +470,22 @@ class Emailit_Webhook {
 
             if (isset($webhook_data['failure_reason'])) {
                 $details['failure_reason'] = $webhook_data['failure_reason'];
+            }
+
+            // Classify bounce events for general email deliverability insights
+            if (in_array($event_type, array('email.delivery.hardfail', 'email.delivery.softfail', 'email.delivery.bounce', 'email.complained', 'email.unsubscribed'))) {
+                $bounce_classification = $this->bounce_classifier->classify_bounce($webhook_data);
+                
+                // Add classification data to details
+                $details['bounce_classification'] = $bounce_classification['classification'];
+                $details['bounce_category'] = $bounce_classification['category'];
+                $details['bounce_severity'] = $bounce_classification['severity'];
+                $details['bounce_confidence'] = $bounce_classification['confidence'];
+                $details['bounce_recommended_action'] = $bounce_classification['recommended_action'];
+                
+                if (!empty($bounce_classification['technical_hints'])) {
+                    $details['bounce_technical_hints'] = $bounce_classification['technical_hints'];
+                }
             }
 
             // Update email status
