@@ -152,6 +152,24 @@ class Emailit_Metrics_Collector {
         $one_hour_ago = date('Y-m-d H:i:s', time() - 3600);
         $one_day_ago = date('Y-m-d H:i:s', time() - 86400);
         
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$logs_table}'")) {
+            return array(
+                'recent' => array(
+                    'total_requests' => 0,
+                    'successful_requests' => 0,
+                    'failed_requests' => 0,
+                    'success_rate' => 0
+                ),
+                'daily' => array(
+                    'total_requests' => 0,
+                    'successful_requests' => 0,
+                    'failed_requests' => 0,
+                    'success_rate' => 0
+                )
+            );
+        }
+        
         // Recent API statistics
         $recent_stats = $wpdb->get_row($wpdb->prepare(
             "SELECT 
@@ -201,13 +219,23 @@ class Emailit_Metrics_Collector {
         $webhook_table = $wpdb->prefix . 'emailit_webhook_logs';
         $one_hour_ago = date('Y-m-d H:i:s', time() - 3600);
         
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$webhook_table}'")) {
+            return array(
+                'total_webhooks' => 0,
+                'successful_webhooks' => 0,
+                'failed_webhooks' => 0,
+                'success_rate' => 0
+            );
+        }
+        
         $stats = $wpdb->get_row($wpdb->prepare(
             "SELECT 
                 COUNT(*) as total_webhooks,
                 SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_webhooks,
                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_webhooks
             FROM {$webhook_table} 
-            WHERE created_at >= %s",
+            WHERE processed_at >= %s",
             $one_hour_ago
         ));
         

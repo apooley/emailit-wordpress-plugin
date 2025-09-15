@@ -80,7 +80,6 @@ class Emailit_Error_Migration {
             created_at datetime NOT NULL,
             completed_at datetime NULL,
             PRIMARY KEY (id),
-            KEY retry_id (retry_id),
             KEY error_code (error_code),
             KEY status (status),
             KEY created_at (created_at)

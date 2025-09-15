@@ -356,11 +356,16 @@ class Emailit_Alert_Manager {
         
         $table = $wpdb->prefix . 'emailit_alerts';
         
+        // Check if table exists before querying
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$table}'")) {
+            return array(); // Return empty array if table doesn't exist
+        }
+        
         $alerts = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$table} WHERE status = 'active' AND dismissed = 0 ORDER BY created_at DESC LIMIT 10"
         ));
         
-        return $alerts;
+        return $alerts ? $alerts : array();
     }
 
     /**
@@ -370,6 +375,11 @@ class Emailit_Alert_Manager {
         global $wpdb;
         
         $table = $wpdb->prefix . 'emailit_alerts';
+        
+        // Check if table exists before inserting
+        if (!$wpdb->get_var("SHOW TABLES LIKE '{$table}'")) {
+            return false; // Skip storing if table doesn't exist
+        }
         
         $result = $wpdb->insert($table, array(
             'alert_type' => $alert['type'],
