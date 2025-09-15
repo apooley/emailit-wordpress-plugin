@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 3.0.2
+ * Version: 3.0.3
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '3.0.1');
+define('EMAILIT_VERSION', '3.0.3');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -168,10 +168,8 @@ class Emailit_Integration {
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-notifications.php';
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-error-migration.php';
 
-        // Load admin classes if in admin
-        if (is_admin()) {
-            require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-admin.php';
-        }
+        // Always load admin class (needed for FluentCRM integration filters)
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-admin.php';
     }
 
     /**
@@ -218,6 +216,9 @@ class Emailit_Integration {
 
         // Always initialize admin interface (it will handle admin-only functionality internally)
         $this->admin = new Emailit_Admin($this->api, $this->logger, $this->queue);
+        
+        // Register FluentCRM integration filters immediately after admin class instantiation
+        $this->register_fluentcrm_filters();
 
         // Initialize database optimizer
         $this->db_optimizer = new Emailit_Database_Optimizer();
@@ -236,6 +237,64 @@ class Emailit_Integration {
         
         // Add bounce classification columns if needed
         $this->add_bounce_classification_columns();
+    }
+
+    /**
+     * Register FluentCRM integration filters
+     */
+    private function register_fluentcrm_filters() {
+        // Only register if FluentCRM is available
+        if (!class_exists('FluentCrm\App\App')) {
+            return;
+        }
+        
+        // Register FluentCRM bounce handler integration filters
+        add_filter('fluent_crm/bounce_handlers', array($this->admin, 'register_fluentcrm_bounce_handler'), 20, 2);
+        add_filter('fluent_crm_handle_bounce_emailit', array($this->admin, 'handle_fluentcrm_bounce'), 10, 3);
+        
+        // Auto-select Emailit as bounce handler when integration is active
+        add_action('init', array($this, 'auto_select_emailit_bounce_handler'), 20);
+    }
+
+    /**
+     * Auto-select Emailit as FluentCRM bounce handler
+     */
+    public function auto_select_emailit_bounce_handler() {
+        // Only run if FluentCRM is available and integration is enabled
+        if (!class_exists('FluentCrm\App\App') || !get_option('emailit_fluentcrm_integration', 1)) {
+            return;
+        }
+        
+        // Only run in admin context to avoid unnecessary processing
+        if (!is_admin()) {
+            return;
+        }
+        
+        // Only auto-select if "Forward bounce data to Emailit API" is enabled
+        if (!get_option('emailit_fluentcrm_forward_bounces', 1)) {
+            return;
+        }
+        
+        // Get current FluentCRM settings
+        $fluentcrm_settings = get_option('fluentcrm-global-settings', array());
+        
+        // Check if Emailit is already selected
+        $current_provider = isset($fluentcrm_settings['bounce_handler_provider']) ? $fluentcrm_settings['bounce_handler_provider'] : '';
+        
+        if ($current_provider === 'emailit') {
+            return; // Already selected
+        }
+        
+        // Auto-select Emailit
+        $fluentcrm_settings['bounce_handler_provider'] = 'emailit';
+        
+        // Save the updated settings
+        $result = update_option('fluentcrm-global-settings', $fluentcrm_settings);
+        
+        // Log the auto-selection
+        if ($result && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit] Auto-selected Emailit as FluentCRM bounce handler (Forward bounces enabled)');
+        }
     }
 
     /**
@@ -682,6 +741,12 @@ class Emailit_Integration {
             'emailit_fluentcrm_soft_bounce_action' => 'track',
             'emailit_fluentcrm_soft_bounce_threshold' => 5,
             'emailit_fluentcrm_complaint_action' => 'unsubscribe',
+            'emailit_fluentcrm_enable_action_mapping' => 1,
+            'emailit_fluentcrm_auto_create_subscribers' => 1,
+            'emailit_fluentcrm_confidence_threshold' => 70,
+            'emailit_fluentcrm_soft_bounce_window' => 7,
+            'emailit_fluentcrm_soft_bounce_reset_on_success' => 1,
+            'emailit_fluentcrm_soft_bounce_history_limit' => 10,
         );
 
         foreach ($defaults as $option => $value) {

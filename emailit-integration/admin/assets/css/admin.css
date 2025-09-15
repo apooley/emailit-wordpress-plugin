@@ -861,6 +861,38 @@ button:focus,
     opacity: 1;
 }
 
+.emailit-existing-key-info {
+    background: #f0f8ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    color: #0073aa;
+    font-size: 13px;
+    width: 100%;
+}
+
+.emailit-existing-key-info .dashicons {
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.emailit-api-key-actions {
+    margin-top: 10px;
+}
+
+.emailit-api-key-actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.emailit-api-key-actions .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
 /* Enhanced Status Badges */
 .emailit-status {
     display: inline-flex;

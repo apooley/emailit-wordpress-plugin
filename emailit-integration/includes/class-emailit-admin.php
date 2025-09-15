@@ -60,6 +60,10 @@ class Emailit_Admin {
 
         // Add AJAX handlers
         add_action('wp_ajax_emailit_send_test_email', array($this, 'ajax_send_test_email'));
+        
+        
+        // Monitor FluentCRM forward bounces setting changes
+        add_action('update_option_emailit_fluentcrm_forward_bounces', array($this, 'handle_forward_bounces_setting_change'), 10, 2);
         add_action('wp_ajax_emailit_send_wordpress_test', array($this, 'ajax_send_wordpress_test'));
         add_action('wp_ajax_emailit_diagnostic', array($this, 'ajax_diagnostic'));
         add_action('wp_ajax_emailit_get_queue_stats', array($this, 'ajax_get_queue_stats'));
@@ -81,6 +85,8 @@ class Emailit_Admin {
             add_action('wp_ajax_emailit_get_soft_bounce_stats', array($this, 'ajax_get_soft_bounce_stats'));
             add_action('wp_ajax_emailit_reset_subscriber_bounce', array($this, 'ajax_reset_subscriber_bounce'));
             add_action('wp_ajax_emailit_get_subscriber_bounce_details', array($this, 'ajax_get_subscriber_bounce_details'));
+            add_action('wp_ajax_emailit_reset_fluentcrm_settings', array($this, 'ajax_reset_fluentcrm_settings'));
+            add_action('wp_ajax_emailit_auto_select_bounce_handler', array($this, 'ajax_auto_select_bounce_handler'));
         }
 
         // Health monitoring AJAX handlers
@@ -194,142 +200,137 @@ class Emailit_Admin {
             'default' => 30
         ));
 
-        // Advanced Settings
-        register_setting('emailit-settings', 'emailit_fallback_enabled', array(
+
+        // Advanced Settings (separate settings group)
+        register_setting('emailit-advanced-settings', 'emailit_fallback_enabled', array(
             'type' => 'boolean',
             'default' => 1
         ));
 
-        register_setting('emailit-settings', 'emailit_retry_attempts', array(
+        register_setting('emailit-advanced-settings', 'emailit_retry_attempts', array(
             'type' => 'integer',
             'sanitize_callback' => array($this, 'sanitize_retry_attempts'),
             'default' => 3
         ));
 
-        register_setting('emailit-settings', 'emailit_timeout', array(
+        register_setting('emailit-advanced-settings', 'emailit_timeout', array(
             'type' => 'integer',
             'sanitize_callback' => array($this, 'sanitize_timeout'),
             'default' => 30
         ));
 
-        register_setting('emailit-settings', 'emailit_webhook_secret', array(
+        register_setting('emailit-advanced-settings', 'emailit_webhook_secret', array(
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
             'default' => wp_generate_password(32, false)
         ));
 
-        register_setting('emailit-settings', 'emailit_enable_webhooks', array(
+        register_setting('emailit-advanced-settings', 'emailit_enable_webhooks', array(
             'type' => 'boolean',
             'default' => 1
         ));
 
         // Queue/Async settings
-        register_setting('emailit-settings', 'emailit_enable_queue', array(
+        register_setting('emailit-advanced-settings', 'emailit_enable_queue', array(
             'type' => 'boolean',
             'sanitize_callback' => array($this, 'sanitize_checkbox'),
             'default' => 0
         ));
 
-        register_setting('emailit-settings', 'emailit_queue_batch_size', array(
+        register_setting('emailit-advanced-settings', 'emailit_queue_batch_size', array(
             'type' => 'integer',
-            'sanitize_callback' => 'absint',
+            'sanitize_callback' => array($this, 'sanitize_queue_batch_size'),
             'default' => 10
         ));
 
-        register_setting('emailit-settings', 'emailit_queue_max_retries', array(
+        register_setting('emailit-advanced-settings', 'emailit_queue_max_retries', array(
             'type' => 'integer',
             'sanitize_callback' => 'absint',
             'default' => 3
         ));
 
-        // FluentCRM Integration settings (only register if FluentCRM is available)
-        if ($this->is_fluentcrm_available()) {
-            register_setting('emailit-settings', 'emailit_fluentcrm_integration', array(
+        // FluentCRM Integration settings (separate settings group)
+        // Note: We register these settings even if FluentCRM is not available yet
+        // The field callbacks will handle the availability check
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_integration', array(
                 'type' => 'boolean',
                 'sanitize_callback' => array($this, 'sanitize_checkbox'),
                 'default' => 1
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_forward_bounces', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_forward_bounces', array(
                 'type' => 'boolean',
                 'sanitize_callback' => array($this, 'sanitize_checkbox'),
                 'default' => 1
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_suppress_default', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_suppress_default', array(
                 'type' => 'boolean',
                 'sanitize_callback' => array($this, 'sanitize_checkbox'),
                 'default' => 0
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_hard_bounce_action', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_hard_bounce_action', array(
                 'type' => 'string',
                 'sanitize_callback' => 'sanitize_text_field',
                 'default' => 'unsubscribe'
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_action', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_soft_bounce_action', array(
                 'type' => 'string',
                 'sanitize_callback' => 'sanitize_text_field',
                 'default' => 'track'
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_threshold', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_soft_bounce_threshold', array(
                 'type' => 'integer',
                 'sanitize_callback' => 'absint',
                 'default' => 5
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_complaint_action', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_complaint_action', array(
                 'type' => 'string',
                 'sanitize_callback' => 'sanitize_text_field',
                 'default' => 'unsubscribe'
             ));
 
             // Action mapping settings
-            register_setting('emailit-settings', 'emailit_fluentcrm_enable_action_mapping', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_enable_action_mapping', array(
                 'type' => 'boolean',
-                'sanitize_callback' => 'rest_sanitize_boolean',
-                'default' => true
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 1
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_auto_create_subscribers', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_auto_create_subscribers', array(
                 'type' => 'boolean',
-                'sanitize_callback' => 'rest_sanitize_boolean',
-                'default' => true
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 1
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_confidence_threshold', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_confidence_threshold', array(
                 'type' => 'integer',
                 'sanitize_callback' => 'absint',
                 'default' => 70
             ));
 
-            // Soft bounce threshold management settings
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_threshold', array(
-                'type' => 'integer',
-                'sanitize_callback' => 'absint',
-                'default' => 5
-            ));
-
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_window', array(
+            // Soft bounce threshold management settings (removed duplicate)
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_soft_bounce_window', array(
                 'type' => 'integer',
                 'sanitize_callback' => 'absint',
                 'default' => 7
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_reset_on_success', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_soft_bounce_reset_on_success', array(
                 'type' => 'boolean',
-                'sanitize_callback' => 'rest_sanitize_boolean',
-                'default' => true
+                'sanitize_callback' => array($this, 'sanitize_checkbox'),
+                'default' => 1
             ));
 
-            register_setting('emailit-settings', 'emailit_fluentcrm_soft_bounce_history_limit', array(
+            register_setting('emailit-fluentcrm-settings', 'emailit_fluentcrm_soft_bounce_history_limit', array(
                 'type' => 'integer',
                 'sanitize_callback' => 'absint',
                 'default' => 10
             ));
-        }
 
         // Add settings sections
         add_settings_section(
@@ -353,36 +354,36 @@ class Emailit_Admin {
             'emailit-settings'
         );
 
-        add_settings_section(
-            'emailit_performance_section',
-            __('Performance & Queue Settings', 'emailit-integration'),
-            array($this, 'performance_section_callback'),
-            'emailit-settings'
-        );
 
+        // Advanced settings section (separate settings group)
         add_settings_section(
             'emailit_advanced_section',
             __('Advanced Settings', 'emailit-integration'),
             array($this, 'advanced_section_callback'),
-            'emailit-settings'
+            'emailit-advanced-settings'
+        );
+
+        add_settings_section(
+            'emailit_performance_section',
+            __('Performance & Queue Settings', 'emailit-integration'),
+            array($this, 'performance_section_callback'),
+            'emailit-advanced-settings'
         );
 
         add_settings_section(
             'emailit_webhook_section',
             __('Webhook Settings', 'emailit-integration'),
             array($this, 'webhook_section_callback'),
-            'emailit-settings'
+            'emailit-advanced-settings'
         );
 
-        // Only add FluentCRM section if FluentCRM is available
-        if ($this->is_fluentcrm_available()) {
-            add_settings_section(
-                'emailit_fluentcrm_section',
-                __('FluentCRM Integration', 'emailit-integration'),
-                array($this, 'fluentcrm_section_callback'),
-                'emailit-settings'
-            );
-        }
+        // Always add FluentCRM section (separate settings group)
+        add_settings_section(
+            'emailit_fluentcrm_section',
+            __('FluentCRM Integration', 'emailit-integration'),
+            array($this, 'fluentcrm_section_callback'),
+            'emailit-fluentcrm-settings'
+        );
 
         // Error handling section
         add_settings_section(
@@ -394,7 +395,10 @@ class Emailit_Admin {
 
         // Add settings fields
         $this->add_settings_fields();
+        
     }
+
+
 
     /**
      * Add settings fields
@@ -456,7 +460,7 @@ class Emailit_Admin {
             'emailit_enable_queue',
             __('Enable Asynchronous Sending', 'emailit-integration'),
             array($this, 'enable_queue_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_performance_section'
         );
 
@@ -464,7 +468,7 @@ class Emailit_Admin {
             'emailit_queue_batch_size',
             __('Queue Batch Size', 'emailit-integration'),
             array($this, 'queue_batch_size_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_performance_section'
         );
 
@@ -472,7 +476,7 @@ class Emailit_Admin {
             'emailit_queue_max_retries',
             __('Queue Max Retries', 'emailit-integration'),
             array($this, 'queue_max_retries_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_performance_section'
         );
 
@@ -481,7 +485,7 @@ class Emailit_Admin {
             'emailit_fallback_enabled',
             __('Enable Fallback', 'emailit-integration'),
             array($this, 'fallback_enabled_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_advanced_section'
         );
 
@@ -489,7 +493,7 @@ class Emailit_Admin {
             'emailit_retry_attempts',
             __('Retry Attempts', 'emailit-integration'),
             array($this, 'retry_attempts_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_advanced_section'
         );
 
@@ -497,7 +501,7 @@ class Emailit_Admin {
             'emailit_timeout',
             __('Timeout (Seconds)', 'emailit-integration'),
             array($this, 'timeout_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_advanced_section'
         );
 
@@ -505,7 +509,7 @@ class Emailit_Admin {
             'emailit_enable_webhooks',
             __('Enable Webhooks', 'emailit-integration'),
             array($this, 'enable_webhooks_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_webhook_section'
         );
 
@@ -513,17 +517,18 @@ class Emailit_Admin {
             'emailit_webhook_secret',
             __('Webhook Secret', 'emailit-integration'),
             array($this, 'webhook_secret_field_callback'),
-            'emailit-settings',
+            'emailit-advanced-settings',
             'emailit_webhook_section'
         );
 
-        // FluentCRM Integration fields (only add if FluentCRM is available)
-        if ($this->is_fluentcrm_available()) {
+        // FluentCRM Integration fields (always add, check availability in field callbacks)
+        // Note: We add these fields even if FluentCRM is not available yet
+        // The field callbacks will handle the availability check and disable fields if needed
             add_settings_field(
                 'emailit_fluentcrm_integration',
                 __('Enable FluentCRM Integration', 'emailit-integration'),
                 array($this, 'fluentcrm_integration_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -531,7 +536,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_forward_bounces',
                 __('Forward Bounces to Emailit', 'emailit-integration'),
                 array($this, 'fluentcrm_forward_bounces_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -539,7 +544,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_suppress_default',
                 __('Suppress Default WordPress Emails', 'emailit-integration'),
                 array($this, 'fluentcrm_suppress_default_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -547,7 +552,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_hard_bounce_action',
                 __('Hard Bounce Action', 'emailit-integration'),
                 array($this, 'fluentcrm_hard_bounce_action_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -555,7 +560,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_soft_bounce_action',
                 __('Soft Bounce Action', 'emailit-integration'),
                 array($this, 'fluentcrm_soft_bounce_action_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -563,7 +568,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_soft_bounce_threshold',
                 __('Soft Bounce Threshold', 'emailit-integration'),
                 array($this, 'fluentcrm_soft_bounce_threshold_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -571,7 +576,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_complaint_action',
                 __('Complaint Action', 'emailit-integration'),
                 array($this, 'fluentcrm_complaint_action_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -580,7 +585,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_enable_action_mapping',
                 __('Enable Action Mapping', 'emailit-integration'),
                 array($this, 'fluentcrm_enable_action_mapping_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -588,7 +593,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_auto_create_subscribers',
                 __('Auto-Create Subscribers', 'emailit-integration'),
                 array($this, 'fluentcrm_auto_create_subscribers_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -596,7 +601,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_confidence_threshold',
                 __('Confidence Threshold', 'emailit-integration'),
                 array($this, 'fluentcrm_confidence_threshold_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -606,7 +611,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_soft_bounce_window',
                 __('Soft Bounce Window (Days)', 'emailit-integration'),
                 array($this, 'fluentcrm_soft_bounce_window_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -614,7 +619,7 @@ class Emailit_Admin {
                 'emailit_fluentcrm_soft_bounce_reset_on_success',
                 __('Reset on Successful Delivery', 'emailit-integration'),
                 array($this, 'fluentcrm_soft_bounce_reset_on_success_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
 
@@ -622,10 +627,9 @@ class Emailit_Admin {
                 'emailit_fluentcrm_soft_bounce_history_limit',
                 __('Bounce History Limit', 'emailit-integration'),
                 array($this, 'fluentcrm_soft_bounce_history_limit_field_callback'),
-                'emailit-settings',
+                'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
-        }
 
         // Error handling fields
         add_settings_field(
@@ -719,6 +723,83 @@ class Emailit_Admin {
 
         if ($fluentcrm_status['available']) {
             echo '<div class="notice notice-success inline"><p><strong>' . __('FluentCRM Detected', 'emailit-integration') . '</strong> - ' . sprintf(__('Version %s is active and ready for integration.', 'emailit-integration'), $fluentcrm_status['version']) . '</p></div>';
+            
+            // Show bounce handler information only if integration is enabled
+            if (get_option('emailit_fluentcrm_integration', 1)) {
+                $bounce_handler_url = $this->get_fluentcrm_bounce_handler_url();
+                if ($bounce_handler_url) {
+                    // Check if Emailit is currently selected as bounce handler
+                    $fluentcrm_settings = get_option('fluentcrm-global-settings', array());
+                    $current_provider = isset($fluentcrm_settings['bounce_handler_provider']) ? $fluentcrm_settings['bounce_handler_provider'] : '';
+                    $is_emailit_selected = ($current_provider === 'emailit');
+                    
+                    echo '<div class="notice notice-info inline"><p>';
+                    echo '<strong>' . __('Bounce Handler Available', 'emailit-integration') . '</strong><br>';
+                    echo __('Your Emailit bounce handler is now available in FluentCRM settings. ', 'emailit-integration');
+                    echo '<a href="' . admin_url('admin.php?page=fluentcrm-admin#/settings/smtp_settings') . '" target="_blank">' . __('Go to FluentCRM Bounce Handler Settings', 'emailit-integration') . '</a>';
+                    echo '</p></div>';
+                    
+                    // Show auto-selection status
+                    if ($is_emailit_selected) {
+                        echo '<div class="notice notice-success inline"><p>';
+                        echo '<strong>' . __('✓ Emailit Auto-Selected', 'emailit-integration') . '</strong><br>';
+                        echo __('Emailit has been automatically selected as the bounce handler in FluentCRM because "Forward bounce data to Emailit API" is enabled.', 'emailit-integration');
+                        echo '</p></div>';
+                    } else {
+                        echo '<div class="notice notice-warning inline"><p>';
+                        echo '<strong>' . __('⚠ Emailit Not Selected', 'emailit-integration') . '</strong><br>';
+                        echo __('Emailit is not currently selected as the bounce handler in FluentCRM. ', 'emailit-integration');
+                        echo __('It will be automatically selected when you enable "Forward bounce data to Emailit API" above.', 'emailit-integration');
+                        echo '</p></div>';
+                    }
+                    
+                    // Add auto-select button
+                    echo '<div class="notice notice-success inline"><p>';
+                    echo '<strong>' . __('Auto-Select Emailit', 'emailit-integration') . '</strong><br>';
+                    echo __('Click the button below to automatically select Emailit as the bounce handler in FluentCRM.', 'emailit-integration');
+                    echo '<br><br>';
+                    echo '<button type="button" class="button button-primary" id="emailit-auto-select-bounce-handler">';
+                    echo __('Auto-Select Emailit as Bounce Handler', 'emailit-integration');
+                    echo '</button>';
+                    echo '<span id="emailit-auto-select-status" style="margin-left: 10px;"></span>';
+                    echo '</p></div>';
+                    
+                    // Add JavaScript for the auto-select button
+                    echo '<script type="text/javascript">
+                    jQuery(document).ready(function($) {
+                        $("#emailit-auto-select-bounce-handler").click(function() {
+                            var button = $(this);
+                            var status = $("#emailit-auto-select-status");
+                            
+                            button.prop("disabled", true);
+                            status.html("Processing...");
+                            
+                            $.post(ajaxurl, {
+                                action: "emailit_auto_select_bounce_handler",
+                                nonce: "' . wp_create_nonce('emailit_admin_nonce') . '"
+                            }, function(response) {
+                                if (response.success) {
+                                    status.html("<span style=\"color: green;\">✓ " + response.message + "</span>");
+                                } else {
+                                    status.html("<span style=\"color: red;\">✗ " + response.message + "</span>");
+                                }
+                                button.prop("disabled", false);
+                            });
+                        });
+                    });
+                    </script>';
+                } else {
+                    echo '<div class="notice notice-warning inline"><p>';
+                    echo '<strong>' . __('Bounce Handler URL Not Generated', 'emailit-integration') . '</strong><br>';
+                    echo __('The bounce handler URL could not be generated. This might be due to missing webhook settings.', 'emailit-integration');
+                    echo '</p></div>';
+                }
+            } else {
+                echo '<div class="notice notice-warning inline"><p>';
+                echo '<strong>' . __('FluentCRM Integration Disabled', 'emailit-integration') . '</strong><br>';
+                echo __('Enable FluentCRM integration above to access bounce handler features.', 'emailit-integration');
+                echo '</p></div>';
+            }
         } else {
             echo '<div class="notice notice-warning inline"><p><strong>' . __('FluentCRM Not Detected', 'emailit-integration') . '</strong> - ' . __('Install and activate FluentCRM to enable advanced email management features.', 'emailit-integration') . '</p></div>';
         }
@@ -764,25 +845,41 @@ class Emailit_Admin {
             }
         }
 
-        // Show placeholder if key exists, empty if not (NEVER show actual key)
-        $display_value = $has_key ? '••••••••••••••••••••••••••••••••' : '';
-        $placeholder = $has_key ? 'Enter new API key to replace existing key' : 'Enter your Emailit API key';
-
         echo '<div class="emailit-api-key-container">';
-        echo '<input type="password" id="emailit_api_key" name="emailit_api_key" value="' . esc_attr($display_value) . '" placeholder="' . esc_attr($placeholder) . '" class="regular-text" data-has-key="' . ($has_key ? '1' : '0') . '" />';
-
-        if ($is_valid) {
-            echo '<span class="emailit-status delivered">✓ Valid</span>';
-        } elseif ($has_key) {
-            echo '<span class="emailit-status failed">✗ Invalid</span>';
-        }
-        echo '</div>';
-
+        
         if ($has_key) {
-            echo '<div class="emailit-api-key-actions">';
-            echo '<button type="button" id="clear-api-key" class="button button-secondary" style="margin-top: 5px;">' . __('Clear API Key', 'emailit-integration') . '</button>';
+            // Show status and clear button when key exists
+            echo '<div class="emailit-existing-key-info">';
+            echo '<span class="dashicons dashicons-lock"></span> ';
+            echo '<strong>API Key is configured</strong>';
+            if ($is_valid) {
+                echo ' <span class="emailit-status delivered">✓ Valid</span>';
+            } else {
+                echo ' <span class="emailit-status failed">✗ Invalid</span>';
+            }
             echo '</div>';
-            echo '<p class="description">' . __('API key is set and encrypted. Enter a new key to replace it, or leave unchanged to keep current key.', 'emailit-integration') . '</p>';
+            
+            echo '<div class="emailit-api-key-actions">';
+            echo '<button type="button" id="clear-api-key" class="button button-secondary">';
+            echo '<span class="dashicons dashicons-trash"></span> Clear API Key';
+            echo '</button>';
+            echo '<button type="button" id="replace-api-key" class="button button-primary" style="margin-left: 10px;">';
+            echo '<span class="dashicons dashicons-edit"></span> Replace API Key';
+            echo '</button>';
+            echo '</div>';
+            
+            // Hidden field for form submission (empty to keep existing key)
+            echo '<input type="hidden" id="emailit_api_key" name="emailit_api_key" value="" />';
+            
+        } else {
+            // Show input field when no key exists
+            echo '<input type="text" id="emailit_api_key" name="emailit_api_key" value="" placeholder="Enter your Emailit API key" class="regular-text" data-has-key="0" />';
+        }
+        
+        echo '</div>';
+        
+        if ($has_key) {
+            echo '<p class="description">' . __('API key is set and encrypted. Use the buttons above to clear or replace it.', 'emailit-integration') . '</p>';
         } else {
             echo '<p class="description">' . __('Enter your Emailit API key. You can find this in your Emailit dashboard.', 'emailit-integration') . '</p>';
         }
@@ -828,8 +925,38 @@ class Emailit_Admin {
 
     public function queue_batch_size_field_callback() {
         $value = get_option('emailit_queue_batch_size', 10);
-        echo '<input type="number" id="emailit_queue_batch_size" name="emailit_queue_batch_size" value="' . esc_attr($value) . '" min="1" max="50" class="small-text" />';
-        echo '<p class="description">' . __('Number of emails to process in each batch. Lower values use less resources.', 'emailit-integration') . '</p>';
+        
+        // Ensure value is within valid range
+        $value = max(1, min(50, intval($value)));
+        
+        echo '<input type="number" id="emailit_queue_batch_size" name="emailit_queue_batch_size" value="' . esc_attr($value) . '" min="1" max="50" step="1" required class="small-text" />';
+        echo '<p class="description">' . __('Number of emails to process in each batch (1-50). Lower values use less resources.', 'emailit-integration') . '</p>';
+        
+        // Add CSS and JavaScript validation
+        echo '<style>
+        #emailit_queue_batch_size.error {
+            border-color: #dc3232 !important;
+            box-shadow: 0 0 2px rgba(204, 74, 74, 0.8) !important;
+        }
+        </style>';
+        
+        echo '<script type="text/javascript">
+        jQuery(document).ready(function($) {
+            $("#emailit_queue_batch_size").on("input change", function() {
+                var value = parseInt($(this).val());
+                if (isNaN(value) || value < 1 || value > 50) {
+                    $(this).addClass("error");
+                    if (value < 1) {
+                        $(this).val(1);
+                    } else if (value > 50) {
+                        $(this).val(50);
+                    }
+                } else {
+                    $(this).removeClass("error");
+                }
+            });
+        });
+        </script>';
     }
 
     public function queue_max_retries_field_callback() {
@@ -892,6 +1019,8 @@ class Emailit_Admin {
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_integration" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_integration" name="emailit_fluentcrm_integration" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_integration">' . __('Enable FluentCRM integration', 'emailit-integration') . '</label>';
 
@@ -907,6 +1036,8 @@ class Emailit_Admin {
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_forward_bounces" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_forward_bounces" name="emailit_fluentcrm_forward_bounces" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_forward_bounces">' . __('Forward bounce data to Emailit API', 'emailit-integration') . '</label>';
         echo '<p class="description">' . __('When enabled, bounce information from FluentCRM will be forwarded to Emailit for comprehensive tracking.', 'emailit-integration') . '</p>';
@@ -917,6 +1048,8 @@ class Emailit_Admin {
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_suppress_default" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_suppress_default" name="emailit_fluentcrm_suppress_default" value="1"' . checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_suppress_default">' . __('Suppress default WordPress emails when FluentCRM is active', 'emailit-integration') . '</label>';
         echo '<p class="description">' . __('Prevent WordPress from sending duplicate emails when FluentCRM is handling the same functionality.', 'emailit-integration') . '</p>';
@@ -980,10 +1113,12 @@ class Emailit_Admin {
     }
 
     public function fluentcrm_enable_action_mapping_field_callback() {
-        $value = get_option('emailit_fluentcrm_enable_action_mapping', true);
+        $value = get_option('emailit_fluentcrm_enable_action_mapping', 1);
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_enable_action_mapping" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_enable_action_mapping" name="emailit_fluentcrm_enable_action_mapping" value="1"' .
              checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_enable_action_mapping">' . __('Enable automatic FluentCRM actions based on bounce classifications', 'emailit-integration') . '</label>';
@@ -991,10 +1126,12 @@ class Emailit_Admin {
     }
 
     public function fluentcrm_auto_create_subscribers_field_callback() {
-        $value = get_option('emailit_fluentcrm_auto_create_subscribers', true);
+        $value = get_option('emailit_fluentcrm_auto_create_subscribers', 1);
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_auto_create_subscribers" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_auto_create_subscribers" name="emailit_fluentcrm_auto_create_subscribers" value="1"' .
              checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_auto_create_subscribers">' . __('Automatically create FluentCRM subscribers for bounced emails', 'emailit-integration') . '</label>';
@@ -1030,10 +1167,12 @@ class Emailit_Admin {
     }
 
     public function fluentcrm_soft_bounce_reset_on_success_field_callback() {
-        $value = get_option('emailit_fluentcrm_soft_bounce_reset_on_success', true);
+        $value = get_option('emailit_fluentcrm_soft_bounce_reset_on_success', 1);
         $webhook = emailit_get_component('webhook');
         $fluentcrm_status = $webhook ? $webhook->get_fluentcrm_integration_status() : array('available' => false);
 
+        // Use hidden input to ensure unchecked state is submitted
+        echo '<input type="hidden" name="emailit_fluentcrm_soft_bounce_reset_on_success" value="0" />';
         echo '<input type="checkbox" id="emailit_fluentcrm_soft_bounce_reset_on_success" name="emailit_fluentcrm_soft_bounce_reset_on_success" value="1"' .
              checked(1, $value, false) . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo ' <label for="emailit_fluentcrm_soft_bounce_reset_on_success">' . __('Reset soft bounce count when email is successfully delivered', 'emailit-integration') . '</label>';
@@ -2230,15 +2369,24 @@ class Emailit_Admin {
             return get_option('emailit_api_key', '');
         }
 
-        // If the value is our placeholder (dots), keep the existing key
-        if ($value === '••••••••••••••••••••••••••••••••') {
-            return get_option('emailit_api_key', '');
+        // Check if this is already an encrypted key (base64 encoded, contains +, /, =)
+        // Encrypted keys are typically 80+ characters and contain base64 characters
+        if (strlen($value) > 50 && preg_match('/[+\/=]/', $value)) {
+            return $value; // Return the encrypted key as-is
         }
 
         // If we have a new actual API key, validate and encrypt it
         if (!empty($value) && $value !== get_option('emailit_api_key', '')) {
-            // Basic validation - API keys should be alphanumeric with some special chars
-            if (!preg_match('/^[a-zA-Z0-9\-_\.]+$/', $value)) {
+            // More permissive validation - just check for reasonable length and basic characters
+            $trimmed_value = trim($value);
+            if (strlen($trimmed_value) < 10) {
+                add_settings_error(
+                    'emailit_api_key',
+                    'invalid_api_key_format',
+                    __('API key appears to be too short. Please check your API key and try again.', 'emailit-integration')
+                );
+                return get_option('emailit_api_key', ''); // Keep existing key on error
+            } elseif (!preg_match('/^[a-zA-Z0-9\-_\.]+$/', $trimmed_value)) {
                 add_settings_error(
                     'emailit_api_key',
                     'invalid_api_key_format',
@@ -2267,12 +2415,21 @@ class Emailit_Admin {
             }
 
             // Encrypt and store the new key
-            return $this->api->encrypt_api_key($value);
+            try {
+                $this->api->set_api_key($value);
+                return get_option('emailit_api_key', '');
+            } catch (Exception $e) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] Exception during API key save: ' . $e->getMessage());
+                }
+                return get_option('emailit_api_key', ''); // Return existing key on error
+            }
         }
 
         // Default: return the sanitized value
         return $value;
     }
+
 
     public function sanitize_retention_days($value) {
         $value = intval($value);
@@ -2291,6 +2448,22 @@ class Emailit_Admin {
 
     public function sanitize_checkbox($value) {
         return !empty($value) ? 1 : 0;
+    }
+
+    /**
+     * Sanitize queue batch size values
+     */
+    public function sanitize_queue_batch_size($value) {
+        $value = absint($value);
+        
+        // Ensure value is within valid range
+        if ($value < 1) {
+            $value = 1;
+        } elseif ($value > 50) {
+            $value = 50;
+        }
+        
+        return $value;
     }
 
     /**
@@ -3392,6 +3565,413 @@ class Emailit_Admin {
             wp_send_json_success(array('message' => __('API key cleared successfully.', 'emailit-integration')));
         } catch (Exception $e) {
             wp_send_json_error(array('message' => sprintf(__('Error clearing API key: %s', 'emailit-integration'), $e->getMessage())));
+        }
+    }
+
+    /**
+     * Register Emailit bounce handler with FluentCRM
+     *
+     * @param array $bounceSettings Current bounce settings
+     * @param string $securityCode Security code for bounce handler
+     * @return array Modified bounce settings
+     */
+    public function register_fluentcrm_bounce_handler($bounceSettings, $securityCode) {
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit] register_fluentcrm_bounce_handler called');
+            error_log('[Emailit] FluentCRM available: ' . ($this->is_fluentcrm_available() ? 'yes' : 'no'));
+            error_log('[Emailit] Integration enabled: ' . (get_option('emailit_fluentcrm_integration', 1) ? 'yes' : 'no'));
+        }
+
+        // Only add if FluentCRM is available and integration is enabled
+        if (!$this->is_fluentcrm_available() || !get_option('emailit_fluentcrm_integration', 1)) {
+            return $bounceSettings;
+        }
+
+        // Add Emailit bounce handler
+        $bounceSettings['emailit'] = array(
+            'label'       => __('Emailit', 'emailit-integration'),
+            'webhook_url' => get_rest_url(null, 'fluent-crm/v2/public/bounce_handler/emailit/handle/' . $securityCode),
+            'doc_url'     => 'https://github.com/apooley/emailit-integration',
+            'input_title' => __('Emailit Bounce Handler', 'emailit-integration'),
+            'input_info'  => '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; margin: 10px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                <h3 style="margin: 0 0 15px 0; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🎉 Congratulations! 🎉</h3>
+                <p style="margin: 0; font-size: 18px; font-weight: 600; line-height: 1.4; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">Emailit\'s integration is handling this for you - just sit back and relax!</p>
+                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9; font-style: italic;">Bounce handling is fully automated and requires no additional configuration.</p>
+            </div>'
+        );
+
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[Emailit] Added Emailit to bounce handlers');
+            error_log('[Emailit] Bounce handlers count: ' . count($bounceSettings));
+        }
+
+        return $bounceSettings;
+    }
+
+    /**
+     * Auto-select Emailit as the FluentCRM bounce handler
+     * 
+     * @return array Result of the operation
+     */
+    public function auto_select_emailit_bounce_handler() {
+        // Check if FluentCRM is available
+        if (!$this->is_fluentcrm_available()) {
+            return array('success' => false, 'message' => 'FluentCRM is not available');
+        }
+
+        // Check if integration is enabled
+        if (!get_option('emailit_fluentcrm_integration', 1)) {
+            return array('success' => false, 'message' => 'Emailit FluentCRM integration is not enabled');
+        }
+
+        // Get current FluentCRM settings
+        $fluentcrm_settings = get_option('fluentcrm-global-settings', array());
+        
+        // Check if Emailit is already selected
+        $current_provider = isset($fluentcrm_settings['bounce_handler_provider']) ? $fluentcrm_settings['bounce_handler_provider'] : '';
+        
+        if ($current_provider === 'emailit') {
+            return array('success' => true, 'message' => 'Emailit is already selected as bounce handler');
+        }
+        
+        // Auto-select Emailit
+        $fluentcrm_settings['bounce_handler_provider'] = 'emailit';
+        
+        // Save the updated settings
+        $result = update_option('fluentcrm-global-settings', $fluentcrm_settings);
+        
+        if ($result) {
+            return array('success' => true, 'message' => 'Successfully selected Emailit as bounce handler');
+        } else {
+            return array('success' => false, 'message' => 'Failed to update FluentCRM settings');
+        }
+    }
+
+    /**
+     * Handle bounce processing for Emailit service
+     *
+     * @param array $response Current response data
+     * @param object $request Request object
+     * @param string $securityCode Security code
+     * @return array Modified response
+     */
+    public function handle_fluentcrm_bounce($response, $request, $securityCode) {
+        try {
+            // Check if FluentCRM is available
+            if (!$this->is_fluentcrm_available()) {
+                return array(
+                    'success' => 0,
+                    'message' => __('FluentCRM is not available', 'emailit-integration'),
+                    'service' => 'emailit',
+                    'result' => '',
+                    'time' => time()
+                );
+            }
+
+            // Verify security code
+            $expected_code = fluentcrm_get_option('_fc_bounce_key');
+            if (!$expected_code || $securityCode !== $expected_code) {
+                return array(
+                    'success' => 0,
+                    'message' => __('Invalid security code', 'emailit-integration'),
+                    'service' => 'emailit',
+                    'result' => '',
+                    'time' => time()
+                );
+            }
+
+            // Get the bounce data from request
+            $bounce_data = $request->get();
+            
+            // Log the incoming bounce data
+            $this->logger->log('FluentCRM bounce handler called', Emailit_Logger::LEVEL_INFO, array(
+                'bounce_data' => $bounce_data,
+                'security_code' => $securityCode
+            ));
+
+            // Process the bounce using our existing bounce classifier
+            $fluentcrm_handler = emailit_get_component('fluentcrm_handler');
+            if (!$fluentcrm_handler) {
+                throw new Exception('FluentCRM handler not available');
+            }
+
+            // Extract email and bounce information
+            $email_address = $this->extract_email_from_bounce_data($bounce_data);
+            $bounce_reason = $this->extract_bounce_reason($bounce_data);
+            $bounce_type = $this->extract_bounce_type($bounce_data);
+
+            if (!$email_address) {
+                throw new Exception('Email address not found in bounce data');
+            }
+
+            // Create a webhook-like data structure for our bounce classifier
+            $webhook_data = array(
+                'type' => $bounce_type,
+                'bounce_reason' => $bounce_reason,
+                'to_email' => $email_address,
+                'email_id' => $bounce_data['email_id'] ?? uniqid('emailit_bounce_'),
+                'timestamp' => current_time('mysql')
+            );
+
+            // Classify the bounce
+            $bounce_classifier = new Emailit_Bounce_Classifier($this->logger);
+            $classification = $bounce_classifier->classify_bounce($webhook_data);
+
+            // Process the bounce action through FluentCRM handler
+            $action_result = $fluentcrm_handler->handle_bounce_action(
+                $webhook_data['email_id'],
+                $bounce_type,
+                array_merge($webhook_data, $classification)
+            );
+
+            return array(
+                'success' => 1,
+                'message' => __('Bounce processed successfully', 'emailit-integration'),
+                'service' => 'emailit',
+                'result' => array(
+                    'email' => $email_address,
+                    'classification' => $classification,
+                    'action_result' => $action_result
+                ),
+                'time' => time()
+            );
+
+        } catch (Exception $e) {
+            $this->logger->log('FluentCRM bounce handler error', Emailit_Logger::LEVEL_ERROR, array(
+                'error' => $e->getMessage(),
+                'bounce_data' => $request->get()
+            ));
+
+            return array(
+                'success' => 0,
+                'message' => sprintf(__('Error processing bounce: %s', 'emailit-integration'), $e->getMessage()),
+                'service' => 'emailit',
+                'result' => '',
+                'time' => time()
+            );
+        }
+    }
+
+    /**
+     * Extract email address from bounce data
+     *
+     * @param array $bounce_data Bounce data from request
+     * @return string|null Email address or null if not found
+     */
+    private function extract_email_from_bounce_data($bounce_data) {
+        // Try different possible keys for email address
+        $email_keys = array('email', 'to_email', 'recipient', 'recipient_email', 'address');
+        
+        foreach ($email_keys as $key) {
+            if (isset($bounce_data[$key]) && is_email($bounce_data[$key])) {
+                return $bounce_data[$key];
+            }
+        }
+
+        // Try nested structures
+        if (isset($bounce_data['data']['email']) && is_email($bounce_data['data']['email'])) {
+            return $bounce_data['data']['email'];
+        }
+
+        if (isset($bounce_data['event']['email']) && is_email($bounce_data['event']['email'])) {
+            return $bounce_data['event']['email'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract bounce reason from bounce data
+     *
+     * @param array $bounce_data Bounce data from request
+     * @return string Bounce reason
+     */
+    private function extract_bounce_reason($bounce_data) {
+        $reason_keys = array('reason', 'bounce_reason', 'error', 'message', 'description');
+        
+        foreach ($reason_keys as $key) {
+            if (isset($bounce_data[$key]) && !empty($bounce_data[$key])) {
+                return $bounce_data[$key];
+            }
+        }
+
+        return 'Unknown bounce reason';
+    }
+
+    /**
+     * Extract bounce type from bounce data
+     *
+     * @param array $bounce_data Bounce data from request
+     * @return string Bounce type
+     */
+    private function extract_bounce_type($bounce_data) {
+        // Check for specific bounce types
+        if (isset($bounce_data['type'])) {
+            return $bounce_data['type'];
+        }
+
+        if (isset($bounce_data['event_type'])) {
+            return $bounce_data['event_type'];
+        }
+
+        if (isset($bounce_data['status'])) {
+            $status = strtolower($bounce_data['status']);
+            if (strpos($status, 'bounce') !== false) {
+                return 'email.bounced';
+            }
+            if (strpos($status, 'complaint') !== false) {
+                return 'email.complained';
+            }
+            if (strpos($status, 'unsubscribe') !== false) {
+                return 'email.unsubscribed';
+            }
+        }
+
+        // Default to bounce
+        return 'email.bounced';
+    }
+
+    /**
+     * Get FluentCRM bounce handler URL
+     *
+     * @return string|null Bounce handler URL or null if not available
+     */
+    private function get_fluentcrm_bounce_handler_url() {
+        if (!$this->is_fluentcrm_available()) {
+            return null;
+        }
+
+        $security_code = fluentcrm_get_option('_fc_bounce_key');
+        if (!$security_code) {
+            return null;
+        }
+
+        return get_rest_url(null, 'fluent-crm/v2/public/bounce_handler/emailit/handle/' . $security_code);
+    }
+
+    /**
+     * Reset FluentCRM settings to default values
+     * This can be called via AJAX or directly
+     */
+    public function reset_fluentcrm_settings() {
+        if (!current_user_can('manage_options')) {
+            return array('success' => false, 'message' => 'Insufficient permissions');
+        }
+
+        if (!$this->is_fluentcrm_available()) {
+            return array('success' => false, 'message' => 'FluentCRM is not available');
+        }
+
+        $fluentcrm_defaults = array(
+            'emailit_fluentcrm_integration' => 1,
+            'emailit_fluentcrm_forward_bounces' => 1,
+            'emailit_fluentcrm_suppress_default' => 0,
+            'emailit_fluentcrm_hard_bounce_action' => 'unsubscribe',
+            'emailit_fluentcrm_soft_bounce_action' => 'track',
+            'emailit_fluentcrm_soft_bounce_threshold' => 5,
+            'emailit_fluentcrm_complaint_action' => 'unsubscribe',
+            'emailit_fluentcrm_enable_action_mapping' => 1,
+            'emailit_fluentcrm_auto_create_subscribers' => 1,
+            'emailit_fluentcrm_confidence_threshold' => 70,
+            'emailit_fluentcrm_soft_bounce_window' => 7,
+            'emailit_fluentcrm_soft_bounce_reset_on_success' => 1,
+            'emailit_fluentcrm_soft_bounce_history_limit' => 10,
+        );
+
+        $updated_count = 0;
+        $errors = array();
+
+        foreach ($fluentcrm_defaults as $option => $default_value) {
+            $current_value = get_option($option, 'NOT_SET');
+            
+            if ($current_value === 'NOT_SET') {
+                // Option doesn't exist, add it
+                $result = add_option($option, $default_value);
+                if ($result) {
+                    $updated_count++;
+                } else {
+                    $errors[] = "Failed to add {$option}";
+                }
+            } else {
+                // Option exists, update it
+                $result = update_option($option, $default_value);
+                if ($result || $current_value == $default_value) {
+                    $updated_count++;
+                } else {
+                    $errors[] = "Failed to update {$option}";
+                }
+            }
+        }
+
+        return array(
+            'success' => empty($errors),
+            'updated_count' => $updated_count,
+            'errors' => $errors,
+            'message' => empty($errors) ? 'All settings reset successfully' : 'Some settings failed to update'
+        );
+    }
+
+    /**
+     * AJAX handler for auto-selecting Emailit as bounce handler
+     */
+    public function ajax_auto_select_bounce_handler() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'emailit_admin_nonce')) {
+            wp_die('Security check failed');
+        }
+
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        $result = $this->auto_select_emailit_bounce_handler();
+        
+        wp_send_json($result);
+    }
+
+    /**
+     * Handle FluentCRM forward bounces setting change
+     */
+    public function handle_forward_bounces_setting_change($old_value, $new_value) {
+        // Only proceed if the new value is 1 (enabled) and FluentCRM is available
+        if ($new_value == 1 && $this->is_fluentcrm_available()) {
+            // Get current FluentCRM settings
+            $fluentcrm_settings = get_option('fluentcrm-global-settings', array());
+            
+            // Check if Emailit is already selected
+            $current_provider = isset($fluentcrm_settings['bounce_handler_provider']) ? $fluentcrm_settings['bounce_handler_provider'] : '';
+            
+            if ($current_provider !== 'emailit') {
+                // Auto-select Emailit as bounce handler
+                $fluentcrm_settings['bounce_handler_provider'] = 'emailit';
+                
+                // Save the updated settings
+                $result = update_option('fluentcrm-global-settings', $fluentcrm_settings);
+                
+                // Log the auto-selection
+                if ($result && defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] Auto-selected Emailit as FluentCRM bounce handler (Forward bounces enabled)');
+                }
+            }
+        }
+    }
+
+
+    /**
+     * AJAX handler for resetting FluentCRM settings
+     */
+    public function ajax_reset_fluentcrm_settings() {
+        check_ajax_referer('emailit_reset_fluentcrm_nonce', 'nonce');
+        
+        $result = $this->reset_fluentcrm_settings();
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
         }
     }
 }

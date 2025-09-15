@@ -512,16 +512,6 @@ class Emailit_Webhook {
         if (isset($status_mapping[$event_type]) && !empty($email_id)) {
             $new_status = $status_mapping[$event_type];
 
-            // Debug logging for status update attempt
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                $this->logger->log('Attempting to update email status from webhook', Emailit_Logger::LEVEL_DEBUG, array(
-                    'email_id' => $email_id,
-                    'event_type' => $event_type,
-                    'new_status' => $new_status,
-                    'webhook_log_id' => $webhook_log_id
-                ));
-            }
-
             // Prepare additional details
             $details = array(
                 'event_type' => $event_type,
@@ -562,15 +552,6 @@ class Emailit_Webhook {
             $details_json = !empty($details) ? wp_json_encode($details) : null;
             $updated = $this->logger->update_email_status($email_id, $new_status, $details_json);
 
-            // Debug logging for update result
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                $this->logger->log('Email status update result', Emailit_Logger::LEVEL_DEBUG, array(
-                    'email_id' => $email_id,
-                    'updated' => $updated,
-                    'new_status' => $new_status
-                ));
-            }
-
             if (!$updated) {
                 $this->logger->log('Failed to update email status from webhook - email not found in database', Emailit_Logger::LEVEL_WARNING, array(
                     'email_id' => $email_id,
@@ -582,6 +563,11 @@ class Emailit_Webhook {
             // Trigger status-specific action hooks
             do_action('emailit_status_updated', $email_id, $new_status, $details);
             do_action("emailit_email_{$new_status}", $email_id, $webhook_data, $details);
+
+            // Forward bounce/complaint events to FluentCRM if integration is enabled
+            if (in_array($event_type, array('email.delivery.bounced', 'email.delivery.complained', 'email.delivery.hardfail', 'email.delivery.softfail', 'email.bounced', 'email.complained'))) {
+                $this->forward_bounce_to_fluentcrm($email_id, $new_status, $details, $webhook_data);
+            }
         }
 
         // Handle tracking events (opens, clicks) differently
@@ -1046,15 +1032,40 @@ class Emailit_Webhook {
             $status['available'] = true;
             $status['active'] = true;
             
-            // Try to get version
-            if (defined('FLUENTCRM_VERSION')) {
-                $status['version'] = FLUENTCRM_VERSION;
-            } elseif (function_exists('fluentCrm')) {
-                $app = fluentCrm();
-                if (method_exists($app, 'getVersion')) {
-                    $status['version'] = $app->getVersion();
+            // Try to get version using multiple methods
+            $version = null;
+            
+            // Method 1: Check for FLUENTCRM_PLUGIN_VERSION constant
+            if (defined('FLUENTCRM_PLUGIN_VERSION')) {
+                $version = FLUENTCRM_PLUGIN_VERSION;
+            }
+            // Method 2: Check for FLUENTCRM_VERSION constant
+            elseif (defined('FLUENTCRM_VERSION')) {
+                $version = FLUENTCRM_VERSION;
+            }
+            // Method 3: Try to get version from FluentCRM app
+            elseif (function_exists('fluentCrm')) {
+                try {
+                    $app = fluentCrm();
+                    if (is_object($app) && method_exists($app, 'getVersion')) {
+                        $version = $app->getVersion();
+                    }
+                } catch (Exception $e) {
+                    // Ignore errors and try next method
                 }
             }
+            // Method 4: Try to get version from plugin data
+            if (!$version && function_exists('get_plugin_data')) {
+                $plugin_file = WP_PLUGIN_DIR . '/fluent-crm/fluent-crm.php';
+                if (file_exists($plugin_file)) {
+                    $plugin_data = get_plugin_data($plugin_file);
+                    if (isset($plugin_data['Version'])) {
+                        $version = $plugin_data['Version'];
+                    }
+                }
+            }
+            
+            $status['version'] = $version ?: 'Unknown';
         }
 
         return $status;
@@ -1117,12 +1128,37 @@ class Emailit_Webhook {
      * Get FluentCRM version
      */
     private function get_fluentcrm_version() {
+        // Method 1: Check for FLUENTCRM_PLUGIN_VERSION constant
         if (defined('FLUENTCRM_PLUGIN_VERSION')) {
             return FLUENTCRM_PLUGIN_VERSION;
         }
 
-        if (function_exists('fluentCrm') && method_exists(fluentCrm(), 'getVersion')) {
-            return fluentCrm()->getVersion();
+        // Method 2: Check for FLUENTCRM_VERSION constant
+        if (defined('FLUENTCRM_VERSION')) {
+            return FLUENTCRM_VERSION;
+        }
+
+        // Method 3: Try to get version from FluentCRM app
+        if (function_exists('fluentCrm')) {
+            try {
+                $app = fluentCrm();
+                if (is_object($app) && method_exists($app, 'getVersion')) {
+                    return $app->getVersion();
+                }
+            } catch (Exception $e) {
+                // Ignore errors and try next method
+            }
+        }
+
+        // Method 4: Try to get version from plugin data
+        if (function_exists('get_plugin_data')) {
+            $plugin_file = WP_PLUGIN_DIR . '/fluent-crm/fluent-crm.php';
+            if (file_exists($plugin_file)) {
+                $plugin_data = get_plugin_data($plugin_file);
+                if (isset($plugin_data['Version'])) {
+                    return $plugin_data['Version'];
+                }
+            }
         }
 
         return 'unknown';
@@ -1256,6 +1292,187 @@ class Emailit_Webhook {
 
         // Fire general status change action for extensibility
         do_action('emailit_fluentcrm_status_changed', $subscriber, $oldStatus, $newStatus, $this);
+    }
+
+    /**
+     * Forward bounce from Emailit to FluentCRM
+     */
+    private function forward_bounce_to_fluentcrm($email_id, $status, $details, $webhook_data) {
+        // Check if FluentCRM integration is enabled
+        if (!get_option('emailit_fluentcrm_integration', 1)) {
+            return;
+        }
+
+        // Check if FluentCRM is available
+        if (!class_exists('FluentCrm\App\Models\Subscriber')) {
+            return;
+        }
+
+        // Get the email address from the webhook data
+        $email_address = $this->extract_email_address_from_webhook($webhook_data);
+        if (!$email_address) {
+            $this->logger->log('Cannot forward bounce to FluentCRM - no email address found', Emailit_Logger::LEVEL_WARNING);
+            return;
+        }
+
+        // Find the FluentCRM subscriber
+        $subscriber = \FluentCrm\App\Models\Subscriber::where('email', $email_address)->first();
+        if (!$subscriber) {
+            $this->logger->log('Cannot forward bounce to FluentCRM - subscriber not found', Emailit_Logger::LEVEL_WARNING);
+            return;
+        }
+
+        // Determine the bounce type and reason
+        $bounce_type = $this->determine_bounce_type_from_status($status, $details);
+        $bounce_reason = $this->extract_bounce_reason($details, $webhook_data);
+
+        // Update FluentCRM subscriber status
+        $this->update_fluentcrm_subscriber_status($subscriber, $bounce_type, $bounce_reason, $details);
+
+        $this->logger->log('Bounce forwarded to FluentCRM', Emailit_Logger::LEVEL_INFO);
+    }
+
+    /**
+     * Extract email address from webhook data
+     */
+    private function extract_email_address_from_webhook($webhook_data) {
+        // Try different possible locations for the email address
+        $possible_locations = array(
+            'object.email.to',
+            'object.to',
+            'to_email',
+            'recipient_email'
+        );
+
+        foreach ($possible_locations as $location) {
+            $value = $this->get_nested_value($webhook_data, $location);
+            if ($value && is_email($value)) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get nested value from array using dot notation
+     */
+    private function get_nested_value($array, $key) {
+        $keys = explode('.', $key);
+        $value = $array;
+
+        foreach ($keys as $k) {
+            if (!isset($value[$k])) {
+                return null;
+            }
+            $value = $value[$k];
+        }
+
+        return $value;
+    }
+
+    /**
+     * Determine bounce type from status and details
+     */
+    private function determine_bounce_type_from_status($status, $details) {
+        // Check if it's a complaint
+        if (strpos($status, 'complained') !== false || isset($details['complaint_reason'])) {
+            return 'complaint';
+        }
+
+        // Check if it's a hard bounce
+        if (isset($details['bounce_classification']) && $details['bounce_classification'] === 'hard_bounce') {
+            return 'hard';
+        }
+
+        // Check if it's a soft bounce
+        if (isset($details['bounce_classification']) && $details['bounce_classification'] === 'soft_bounce') {
+            return 'soft';
+        }
+
+        // Default to hard bounce for bounced status
+        if (strpos($status, 'bounced') !== false) {
+            return 'hard';
+        }
+
+        return 'hard'; // Default fallback
+    }
+
+    /**
+     * Extract bounce reason from details and webhook data
+     */
+    private function extract_bounce_reason($details, $webhook_data) {
+        // Try to get bounce reason from various sources
+        $possible_reasons = array(
+            $details['bounce_reason'] ?? null,
+            $details['complaint_reason'] ?? null,
+            $details['failure_reason'] ?? null,
+            $webhook_data['bounce_reason'] ?? null,
+            $webhook_data['complaint_reason'] ?? null,
+            $webhook_data['failure_reason'] ?? null
+        );
+
+        foreach ($possible_reasons as $reason) {
+            if (!empty($reason)) {
+                return $reason;
+            }
+        }
+
+        return 'Email bounced - reason not specified';
+    }
+
+    /**
+     * Update FluentCRM subscriber status based on bounce type
+     */
+    private function update_fluentcrm_subscriber_status($subscriber, $bounce_type, $bounce_reason, $details) {
+        $old_status = $subscriber->status;
+
+        switch ($bounce_type) {
+            case 'complaint':
+                // Update to complained status
+                $subscriber->status = 'complained';
+                $subscriber->save();
+                
+                // Add complaint reason to meta
+                fluentcrm_update_subscriber_meta($subscriber->id, 'reason', $bounce_reason);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_complaint_reason', $bounce_reason);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_complaint_date', current_time('mysql'));
+                break;
+
+            case 'hard':
+                // Update to bounced status
+                $subscriber->status = 'bounced';
+                $subscriber->save();
+                
+                // Add bounce reason to meta
+                fluentcrm_update_subscriber_meta($subscriber->id, 'reason', $bounce_reason);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_bounce_reason', $bounce_reason);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_bounce_date', current_time('mysql'));
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_bounce_type', 'hard');
+                break;
+
+            case 'soft':
+                // Track soft bounce count
+                $current_count = fluentcrm_get_subscriber_meta($subscriber->id, 'emailit_soft_bounce_count', 0);
+                $new_count = intval($current_count) + 1;
+                
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_soft_bounce_count', $new_count);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_last_soft_bounce', current_time('mysql'));
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_soft_bounce_reason', $bounce_reason);
+                fluentcrm_update_subscriber_meta($subscriber->id, 'emailit_bounce_type', 'soft');
+                
+                // Check if we should escalate to hard bounce
+                $threshold = get_option('emailit_fluentcrm_soft_bounce_threshold', 5);
+                if ($new_count >= $threshold) {
+                    $subscriber->status = 'bounced';
+                    $subscriber->save();
+                    fluentcrm_update_subscriber_meta($subscriber->id, 'reason', 'Soft bounce threshold reached (' . $new_count . ' bounces)');
+                }
+                break;
+        }
+
+        // Fire FluentCRM status change action
+        do_action('fluent_crm/subscriber_status_changed', $subscriber, $old_status, $subscriber->status);
     }
 
     /**

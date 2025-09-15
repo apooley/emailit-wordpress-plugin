@@ -56,13 +56,12 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
         <?php endif; ?>
     </nav>
 
-    <form method="post" action="options.php">
-        <?php
-        settings_fields('emailit-settings');
-        ?>
-
-        <!-- General Settings Tab -->
-        <div id="general" class="emailit-tab-pane <?php echo $current_tab === 'general' ? 'active' : ''; ?>">
+    <!-- General Settings Tab -->
+    <div id="general" class="emailit-tab-pane <?php echo $current_tab === 'general' ? 'active' : ''; ?>">
+        <form id="emailit-settings-form" method="post" action="options.php">
+            <?php
+            settings_fields('emailit-settings');
+            ?>
 
             <!-- API Configuration -->
             <h2>
@@ -155,9 +154,10 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             </table>
 
             <?php submit_button(); ?>
-        </div>
+        </form>
+    </div>
 
-        <!-- Logs & Statistics Tab -->
+    <!-- Logs & Statistics Tab -->
         <div id="logs" class="emailit-tab-pane <?php echo $current_tab === 'logs' ? 'active' : ''; ?>">
             <h2><?php _e('Email Logs & Statistics', 'emailit-integration'); ?></h2>
             
@@ -264,8 +264,8 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                     </p>
                 </div>
                 <p>
-                    <a href="#webhook" class="button button-secondary" onclick="jQuery('a[href=\'#webhook\']').click(); return false;">
-                        <?php _e('Configure Webhooks', 'emailit-integration'); ?>
+                    <a href="#advanced" class="button button-secondary" onclick="jQuery('a[href=\'#advanced\']').click(); return false;">
+                        <?php _e('Configure Webhooks (Advanced Tab)', 'emailit-integration'); ?>
                     </a>
                 </p>
             </div>
@@ -441,6 +441,12 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 <?php endif; ?>
             </div>
 
+            <!-- Form for Advanced settings -->
+            <form method="post" action="options.php">
+                <?php
+                settings_fields('emailit-advanced-settings');
+                ?>
+
             <!-- Performance & Queue Settings -->
             <div class="emailit-advanced-section collapsible power-user-only">
                 <div class="section-header">
@@ -460,7 +466,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 
                 <table class="form-table emailit-form-table" role="presentation">
                     <tbody>
-                        <?php do_settings_fields('emailit-settings', 'emailit_performance_section'); ?>
+                        <?php do_settings_fields('emailit-advanced-settings', 'emailit_performance_section'); ?>
                     </tbody>
                 </table>
 
@@ -527,7 +533,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                                 </p>
                             </td>
                         </tr>
-                        <?php do_settings_fields('emailit-settings', 'emailit_webhook_section'); ?>
+                        <?php do_settings_fields('emailit-advanced-settings', 'emailit_webhook_section'); ?>
                     </tbody>
                 </table>
 
@@ -561,7 +567,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 
                 <table class="form-table emailit-form-table" role="presentation">
                     <tbody>
-                        <?php do_settings_fields('emailit-settings', 'emailit_advanced_section'); ?>
+                        <?php do_settings_fields('emailit-advanced-settings', 'emailit_advanced_section'); ?>
                     </tbody>
                 </table>
                 </div>
@@ -618,51 +624,9 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 </div>
             </div>
 
-            <!-- Health Monitor -->
-            <div class="emailit-advanced-section collapsible power-user-only">
-                <div class="section-header">
-                    <h3>
-                        <?php _e('Health Monitoring', 'emailit-integration'); ?>
-                        <span class="emailit-help-tooltip">
-                            <span class="help-icon">?</span>
-                            <span class="tooltip-content">
-                                <?php _e('Monitor system health and performance. Get alerts about issues and track overall plugin performance over time.', 'emailit-integration'); ?>
-                            </span>
-                        </span>
-                    </h3>
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="section-content">
-                    <p class="description"><?php _e('System health monitoring and diagnostics.', 'emailit-integration'); ?></p>
-                
-                <div class="emailit-health-overview">
-                    <div class="health-status-cards">
-                        <div class="health-card">
-                            <h4><?php _e('System Health', 'emailit-integration'); ?></h4>
-                            <div class="status-indicator" id="system-health">
-                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
-                            </div>
-                        </div>
-                        <div class="health-card">
-                            <h4><?php _e('API Connectivity', 'emailit-integration'); ?></h4>
-                            <div class="status-indicator" id="api-connectivity">
-                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
-                            </div>
-                        </div>
-                        <div class="health-card">
-                            <h4><?php _e('Database Health', 'emailit-integration'); ?></h4>
-                            <div class="status-indicator" id="database-health">
-                                <span class="status-text"><?php _e('Checking...', 'emailit-integration'); ?></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Health Monitor link removed - functionality integrated into this page -->
-                </div>
-            </div>
 
             <?php submit_button(); ?>
+            </form>
         </div>
 
         <!-- Webhook Settings Tab -->
@@ -688,7 +652,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                                 </p>
                             </td>
                         </tr>
-                        <?php do_settings_fields('emailit-settings', 'emailit_webhook_section'); ?>
+                        <?php do_settings_fields('emailit-advanced-settings', 'emailit_webhook_section'); ?>
                     </tbody>
                 </table>
 
@@ -810,11 +774,71 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             <div class="emailit-fluentcrm-info">
                 <p><?php _e('Configure FluentCRM integration for seamless bounce handling and subscriber management.', 'emailit-integration'); ?></p>
 
-                <table class="form-table emailit-form-table" role="presentation">
-                    <tbody>
-                        <?php do_settings_fields('emailit-settings', 'emailit_fluentcrm_section'); ?>
-                    </tbody>
-                </table>
+                <!-- Separate form for FluentCRM settings -->
+                <form method="post" action="options.php">
+                    <?php
+                    settings_fields('emailit-fluentcrm-settings');
+                    ?>
+                    <table class="form-table emailit-form-table" role="presentation">
+                        <tbody>
+                            <?php do_settings_fields('emailit-fluentcrm-settings', 'emailit_fluentcrm_section'); ?>
+                        </tbody>
+                    </table>
+                    
+                    <div class="emailit-fluentcrm-actions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                        <?php submit_button(__('Save FluentCRM Settings', 'emailit-integration')); ?>
+                        <button type="button" id="reset-fluentcrm-settings" class="button button-secondary" style="margin-left: 10px;">
+                            <?php _e('Reset to Defaults', 'emailit-integration'); ?>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Reset Button JavaScript -->
+                <script type="text/javascript">
+                jQuery(document).ready(function($) {
+                    $('#reset-fluentcrm-settings').click(function() {
+                        if (confirm('<?php _e('Are you sure you want to reset all FluentCRM settings to their default values? This action cannot be undone.', 'emailit-integration'); ?>')) {
+                            // Show loading state
+                            var button = $(this);
+                            var originalText = button.text();
+                            button.prop('disabled', true).text('<?php _e('Resetting...', 'emailit-integration'); ?>');
+                            
+                            // Make AJAX request to reset settings
+                            $.post(ajaxurl, {
+                                action: 'emailit_reset_fluentcrm_settings',
+                                nonce: '<?php echo wp_create_nonce('emailit_reset_fluentcrm_nonce'); ?>'
+                            }, function(response) {
+                                if (response.success) {
+                                    // Show success message
+                                    $('<div class="notice notice-success is-dismissible"><p>' + response.data.message + '</p></div>')
+                                        .insertAfter('.emailit-fluentcrm-actions')
+                                        .delay(3000)
+                                        .fadeOut();
+                                    
+                                    // Reload the page to show updated values
+                                    setTimeout(function() {
+                                        window.location.reload();
+                                    }, 1000);
+                                } else {
+                                    // Show error message
+                                    $('<div class="notice notice-error is-dismissible"><p>' + response.data.message + '</p></div>')
+                                        .insertAfter('.emailit-fluentcrm-actions');
+                                }
+                                
+                                // Reset button state
+                                button.prop('disabled', false).text(originalText);
+                            }).fail(function() {
+                                // Show error message
+                                $('<div class="notice notice-error is-dismissible"><p><?php _e('An error occurred while resetting settings. Please try again.', 'emailit-integration'); ?></p></div>')
+                                    .insertAfter('.emailit-fluentcrm-actions');
+                                
+                                // Reset button state
+                                button.prop('disabled', false).text(originalText);
+                            });
+                        }
+                    });
+                });
+                </script>
 
                 <!-- FluentCRM Status Information -->
                 <div class="emailit-fluentcrm-status">
@@ -1177,7 +1201,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                     </table>
                 </div>
         </div>
-    </form>
+    </div>
 </div>
 
 <script>

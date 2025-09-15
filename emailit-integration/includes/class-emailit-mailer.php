@@ -55,12 +55,16 @@ class Emailit_Mailer {
      */
     private function init_hooks() {
         // Use pre_wp_mail filter for WordPress 5.7+ for complete override
+        // Use priority 5 to ensure we hook in before FluentCRM and other plugins
         if (version_compare(get_bloginfo('version'), '5.7', '>=')) {
-            add_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 10, 2);
+            add_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 5, 2);
         } else {
             // Fallback to phpmailer_init for older versions
             add_action('phpmailer_init', array($this, 'phpmailer_init_handler'));
         }
+
+        // Add FluentCRM-specific filters to detect and handle bypass mechanisms
+        $this->add_fluentcrm_debug_filters();
 
         // Note: should_send_via_emailit is used internally, not as a hook
     }
@@ -70,20 +74,21 @@ class Emailit_Mailer {
      */
     public function pre_wp_mail_handler($null, $atts) {
         try {
-            // Debug logging (only when WP_DEBUG is enabled)
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                $this->logger->log('Emailit attempting to send email via pre_wp_mail', Emailit_Logger::LEVEL_DEBUG, array(
-                    'to' => isset($atts['to']) ? $atts['to'] : 'not_set',
-                    'subject' => isset($atts['subject']) ? $atts['subject'] : 'not_set'
-                ));
-            }
+            // Check if this is a FluentCRM email for potential special handling
+            $is_fluentcrm_email = $this->is_fluentcrm_email($atts);
 
-            // Extract wp_mail arguments
-            $to = $atts['to'];
-            $subject = $atts['subject'];
-            $message = $atts['message'];
+            // Extract wp_mail arguments with validation
+            $to = isset($atts['to']) ? $atts['to'] : '';
+            $subject = isset($atts['subject']) ? $atts['subject'] : '';
+            $message = isset($atts['message']) ? $atts['message'] : '';
             $headers = isset($atts['headers']) ? $atts['headers'] : '';
             $attachments = isset($atts['attachments']) ? $atts['attachments'] : array();
+
+            // Validate required fields
+            if (empty($to) || empty($subject) || empty($message)) {
+                $this->logger->log('Missing required email fields', Emailit_Logger::LEVEL_ERROR);
+                return false;
+            }
 
             // Send via Emailit
             $result = $this->send($to, $subject, $message, $headers, $attachments);
@@ -150,13 +155,6 @@ class Emailit_Mailer {
      */
     public function send($to, $subject, $message, $headers = '', $attachments = array()) {
         try {
-            // Debug logging
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                $this->logger->log('Emailit send method called', Emailit_Logger::LEVEL_DEBUG, array(
-                    'to' => $to,
-                    'subject' => $subject
-                ));
-            }
 
             // Prepare email data
             $email_data = $this->prepare_email_data($to, $subject, $message, $headers, $attachments);
@@ -296,8 +294,10 @@ class Emailit_Mailer {
         ));
 
         // Build email data with sanitization
+        $sanitized_to = $this->sanitize_email_address($to);
+        
         $email_data = array(
-            'to' => is_array($to) ? array_map('sanitize_email', array_filter($to, 'is_email')) : (is_email($to) ? sanitize_email($to) : ''),
+            'to' => $sanitized_to,
             'subject' => $this->sanitize_subject($subject),
             'message' => $filtered_message, // Use filtered content
             'content_type' => $content_type,
@@ -474,6 +474,59 @@ class Emailit_Mailer {
     }
 
     /**
+     * Sanitize email address, handling "Name <email@domain.com>" format
+     */
+    private function sanitize_email_address($to) {
+        if (is_array($to)) {
+            $sanitized_emails = array();
+            foreach ($to as $email) {
+                $sanitized = $this->sanitize_single_email($email);
+                if (!empty($sanitized)) {
+                    $sanitized_emails[] = $sanitized;
+                }
+            }
+            return $sanitized_emails;
+        }
+
+        return $this->sanitize_single_email($to);
+    }
+
+    /**
+     * Sanitize a single email address
+     */
+    private function sanitize_single_email($email) {
+        if (empty($email)) {
+            return '';
+        }
+
+        // Handle "Name <email@domain.com>" format
+        if (preg_match('/^(.+?)\s*<(.+?)>$/', $email, $matches)) {
+            $name = trim($matches[1], '"\'');
+            $email_address = trim($matches[2]);
+            
+            // Validate the email address part
+            if (is_email($email_address)) {
+                return sanitize_email($email_address);
+            }
+        } else {
+            // Handle plain email address
+            if (is_email($email)) {
+                return sanitize_email($email);
+            }
+        }
+
+        // If we get here, the email is invalid
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            $this->logger->log('Invalid email address format detected', Emailit_Logger::LEVEL_WARNING, array(
+                'original_email' => $email,
+                'type' => gettype($email)
+            ));
+        }
+
+        return '';
+    }
+
+    /**
      * Extract headers from PHPMailer object
      */
     private function extract_headers_from_phpmailer($phpmailer) {
@@ -628,8 +681,18 @@ class Emailit_Mailer {
      * Remove hooks temporarily
      */
     private function remove_hooks() {
-        remove_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 10);
+        remove_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 5);
         remove_action('phpmailer_init', array($this, 'phpmailer_init_handler'));
+        
+        // Remove FluentCRM debug filters (only if FluentCRM is available)
+        if ($this->is_fluentcrm_available()) {
+            remove_filter('fluent_crm/is_simulated_mail', array($this, 'debug_fluentcrm_simulation'), 5);
+            remove_filter('fluent_crm/disable_email_processing', array($this, 'debug_fluentcrm_processing_disable'), 5);
+            
+            if (defined('FLUENTMAIL') && function_exists('fluentmail_will_log_email')) {
+                remove_filter('fluentmail_will_log_email', array($this, 'debug_fluentmail_logging'), 5);
+            }
+        }
     }
 
     /**
@@ -891,6 +954,117 @@ class Emailit_Mailer {
      */
     public function is_queue_enabled() {
         return $this->queue_enabled;
+    }
+
+    /**
+     * Add FluentCRM-specific debug filters to detect bypass mechanisms
+     */
+    private function add_fluentcrm_debug_filters() {
+        // Only add these filters if FluentCRM is available and active
+        if (!$this->is_fluentcrm_available()) {
+            return;
+        }
+
+        // Monitor FluentCRM simulation mode
+        add_filter('fluent_crm/is_simulated_mail', array($this, 'debug_fluentcrm_simulation'), 5, 3);
+        
+        // Monitor FluentCRM email processing disable
+        add_filter('fluent_crm/disable_email_processing', array($this, 'debug_fluentcrm_processing_disable'), 5, 1);
+        
+        // Monitor FluentMail integration (only if FluentMail is also available)
+        if (defined('FLUENTMAIL') && function_exists('fluentmail_will_log_email')) {
+            add_filter('fluentmail_will_log_email', array($this, 'debug_fluentmail_logging'), 5, 2);
+        }
+    }
+
+    /**
+     * Check if FluentCRM is available and active
+     */
+    private function is_fluentcrm_available() {
+        return class_exists('FluentCrm\App\App') && 
+               class_exists('FluentCrm\App\Models\Subscriber') &&
+               function_exists('fluentcrm_get_option');
+    }
+
+    /**
+     * Debug FluentCRM simulation mode
+     */
+    public function debug_fluentcrm_simulation($is_simulated, $data, $headers) {
+        // Only proceed if FluentCRM is available
+        if (!$this->is_fluentcrm_available()) {
+            return $is_simulated;
+        }
+
+        if ($is_simulated) {
+            $this->logger->log('FluentCRM simulation mode detected - email bypassed', Emailit_Logger::LEVEL_WARNING);
+        }
+        return $is_simulated;
+    }
+
+    /**
+     * Debug FluentCRM email processing disable
+     */
+    public function debug_fluentcrm_processing_disable($is_disabled) {
+        // Only proceed if FluentCRM is available
+        if (!$this->is_fluentcrm_available()) {
+            return $is_disabled;
+        }
+
+        if ($is_disabled) {
+            $this->logger->log('FluentCRM email processing disabled', Emailit_Logger::LEVEL_WARNING);
+        }
+        return $is_disabled;
+    }
+
+    /**
+     * Debug FluentMail logging integration
+     */
+    public function debug_fluentmail_logging($will_log, $email_data) {
+        // Only proceed if FluentMail is available
+        if (!defined('FLUENTMAIL') || !function_exists('fluentmail_will_log_email')) {
+            return $will_log;
+        }
+
+        $this->logger->log('FluentMail integration detected', Emailit_Logger::LEVEL_DEBUG);
+        return $will_log;
+    }
+
+    /**
+     * Check if email is from FluentCRM
+     */
+    private function is_fluentcrm_email($atts) {
+        // Only check if FluentCRM is available
+        if (!$this->is_fluentcrm_available()) {
+            return false;
+        }
+
+        // Check for FluentCRM-specific headers or patterns
+        $headers = isset($atts['headers']) ? $atts['headers'] : '';
+        
+        if (is_array($headers)) {
+            foreach ($headers as $header) {
+                if (strpos($header, 'List-Unsubscribe') !== false && strpos($header, 'fluentcrm') !== false) {
+                    return true;
+                }
+            }
+        } elseif (is_string($headers)) {
+            if (strpos($headers, 'fluentcrm') !== false) {
+                return true;
+            }
+        }
+        
+        // Check for FluentCRM-specific subject patterns
+        $subject = isset($atts['subject']) ? $atts['subject'] : '';
+        if (strpos($subject, 'FluentCRM') !== false || strpos($subject, 'fluentcrm') !== false) {
+            return true;
+        }
+        
+        // Check if FluentCRM is currently sending emails
+        if (function_exists('did_action') && did_action('fluent_crm/sending_emails_starting')) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**

@@ -543,18 +543,12 @@ class Emailit_API {
     public function get_api_key() {
         // Return static cached key if available (prevents multiple retrievals across instances)
         if (self::$cached_api_key !== null) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Returning static cached key');
-            }
             $this->api_key = self::$cached_api_key;
             return $this->api_key;
         }
 
         // Return instance cached key if available
         if ($this->api_key !== null) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Returning instance cached key');
-            }
             return $this->api_key;
         }
 
@@ -562,86 +556,46 @@ class Emailit_API {
         $transient_key = 'emailit_api_key_cache';
         $cached_key = get_transient($transient_key);
         if ($cached_key !== false) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Returning transient cached key');
-            }
             $this->api_key = $cached_key;
             self::$cached_api_key = $cached_key;
             return $cached_key;
         }
 
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API get_api_key: Starting key retrieval');
-        }
-        
         $key = get_option('emailit_api_key', '');
 
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API get_api_key: Raw key from option: ' . (empty($key) ? 'empty' : 'present (' . strlen($key) . ' chars)'));
-        }
-
         if (empty($key)) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Key is empty, caching empty string');
-            }
             $this->api_key = '';
             return '';
         }
 
         // Check if the key looks encrypted (base64 encoded)
         // If it's not encrypted, return as-is (for backward compatibility)
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API get_api_key: Checking if key is encrypted');
-        }
-        
         if ($this->is_encrypted($key)) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Key appears encrypted, attempting decryption');
-            }
             
             try {
                 $decrypted = $this->decrypt_string($key);
                 
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[Emailit DEBUG] API get_api_key: New decryption result: ' . (empty($decrypted) ? 'empty' : 'success'));
-                }
 
                 // If new decryption fails, try legacy decryption
                 if (empty($decrypted) && strlen($key) > 50) {
-                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[Emailit DEBUG] API get_api_key: Trying legacy decryption');
-                    }
                     
                     $decrypted = $this->decrypt_string_legacy($key);
 
                     // If legacy decryption works, re-encrypt with new method
                     if (!empty($decrypted)) {
-                        if (defined('WP_DEBUG') && WP_DEBUG) {
-                            error_log('[Emailit DEBUG] API get_api_key: Legacy decryption successful, re-encrypting');
-                        }
                         $this->set_api_key($decrypted); // This will re-encrypt with new method
                     }
                 }
             } catch (Exception $e) {
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[Emailit DEBUG] API get_api_key: Exception during decryption: ' . $e->getMessage());
-                    error_log('[Emailit DEBUG] API get_api_key: Exception file: ' . $e->getFile() . ' line: ' . $e->getLine());
-                }
                 throw $e;
             }
 
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit DEBUG] API get_api_key: Caching decrypted key');
-            }
             $this->api_key = $decrypted;
             self::$cached_api_key = $decrypted; // Cache in static variable to prevent multiple retrievals
             set_transient('emailit_api_key_cache', $decrypted, 300); // Cache for 5 minutes
             return $decrypted;
         }
 
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API get_api_key: Key not encrypted, caching as-is');
-        }
         $this->api_key = $key;
         self::$cached_api_key = $key; // Cache in static variable to prevent multiple retrievals
         set_transient('emailit_api_key_cache', $key, 300); // Cache for 5 minutes
@@ -654,9 +608,6 @@ class Emailit_API {
     public static function clear_api_key_cache() {
         self::$cached_api_key = null;
         delete_transient('emailit_api_key_cache');
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API clear_api_key_cache: Static and transient cache cleared');
-        }
     }
 
     /**
@@ -681,9 +632,20 @@ class Emailit_API {
      */
     public function set_api_key($api_key) {
         $encrypted_key = $this->encrypt_string($api_key);
-        update_option('emailit_api_key', $encrypted_key);
+        
+        if (empty($encrypted_key)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Encryption failed - empty result');
+            }
+            return false;
+        }
+        
+        $result = update_option('emailit_api_key', $encrypted_key);
+        
         $this->api_key = $api_key;
         self::$cached_api_key = $api_key; // Update static cache with new key
+        
+        return $result;
     }
 
     /**
@@ -855,34 +817,15 @@ class Emailit_API {
         // Since there's no API validation endpoint, just check if key exists and has proper format
         $key_to_test = $api_key ?: $this->api_key;
 
-        // Only log debug info if this is a manual validation (not from health monitor)
-        $is_manual_validation = $api_key !== null;
-        if (defined('WP_DEBUG') && WP_DEBUG && $is_manual_validation) {
-            error_log('[Emailit DEBUG] API validate_api_key: Manual validation (no API endpoint available)');
-            error_log('[Emailit DEBUG] API validate_api_key: Key to test: ' . (empty($key_to_test) ? 'empty' : 'present (' . strlen($key_to_test) . ' chars)'));
-            if (!empty($key_to_test)) {
-                error_log('[Emailit DEBUG] API validate_api_key: Key preview: ' . substr($key_to_test, 0, 8) . '...' . substr($key_to_test, -4));
-            }
-        }
 
         if (empty($key_to_test)) {
-            if (defined('WP_DEBUG') && WP_DEBUG && $is_manual_validation) {
-                error_log('[Emailit DEBUG] API validate_api_key: Key is empty, returning WP_Error');
-            }
             return new WP_Error('empty_key', __('API key cannot be empty.', 'emailit-integration'));
         }
 
         // Basic format validation - check if it looks like a valid API key
         // Emailit API keys typically start with 'em_api_' and are around 39 characters
         if (strlen($key_to_test) < 20 || !str_starts_with($key_to_test, 'em_api_')) {
-            if (defined('WP_DEBUG') && WP_DEBUG && $is_manual_validation) {
-                error_log('[Emailit DEBUG] API validate_api_key: Key format invalid');
-            }
             return new WP_Error('invalid_format', __('API key format appears invalid.', 'emailit-integration'));
-        }
-
-        if (defined('WP_DEBUG') && WP_DEBUG && $is_manual_validation) {
-            error_log('[Emailit DEBUG] API validate_api_key: Key format appears valid');
         }
 
         return true;
@@ -903,9 +846,6 @@ class Emailit_API {
      * Completely remove API key from database
      */
     public function clear_api_key() {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API clear_api_key: Removing API key from database');
-        }
         
         // Remove the API key from options
         delete_option('emailit_api_key');
@@ -927,9 +867,6 @@ class Emailit_API {
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_emailit_api_key_valid_%'");
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_emailit_api_key_valid_%'");
         
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[Emailit DEBUG] API clear_api_key: API key removed successfully');
-        }
         
         return true;
     }
@@ -978,6 +915,9 @@ class Emailit_API {
         $encrypted = openssl_encrypt($string, $cipher, $key, OPENSSL_RAW_DATA, $iv, $tag);
 
         if ($encrypted === false) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] openssl_encrypt failed');
+            }
             return '';
         }
 

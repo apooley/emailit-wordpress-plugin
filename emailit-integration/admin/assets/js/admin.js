@@ -48,9 +48,8 @@
             $(document).on('change', '#emailit_enable_webhooks', this.toggleWebhookOptions);
 
             // API key field enhancements
-            $(document).on('focus', '#emailit_api_key', this.handleApiKeyFocus);
-            $(document).on('input', '#emailit_api_key', this.handleApiKeyInput);
             $(document).on('click', '#clear-api-key', this.clearApiKey);
+            $(document).on('click', '#replace-api-key', this.replaceApiKey);
 
             // Webhook alert dismissal
             $(document).on('click', '.dismiss-webhook-alert', this.dismissWebhookAlert);
@@ -478,9 +477,14 @@
 
             var errors = [];
 
-            // Validate API key
-            if (!$apiKey.val().trim()) {
+            // Validate API key - simple validation
+            var apiKeyValue = $apiKey.val().trim();
+            
+            if (!apiKeyValue) {
                 errors.push('API Key is required.');
+                $apiKey.addClass('error');
+            } else if (apiKeyValue.length < 10) {
+                errors.push('API Key appears to be too short. Please check your API key.');
                 $apiKey.addClass('error');
             } else {
                 $apiKey.removeClass('error');
@@ -561,35 +565,27 @@
             }, 5000);
         },
 
-        /**
-         * Handle API key field focus
-         */
-        handleApiKeyFocus: function() {
-            var $field = $(this);
-            var hasKey = $field.data('has-key') === '1';
-
-            if (hasKey) {
-                // Clear placeholder dots when focusing to enter new key
-                if ($field.val() === '••••••••••••••••••••••••••••••••') {
-                    $field.val('');
-                    $field.attr('placeholder', 'Enter new API key to replace existing key');
-                }
-            }
-        },
 
         /**
-         * Handle API key field input
+         * Replace API key - show input field
          */
-        handleApiKeyInput: function() {
-            var $field = $(this);
-            var value = $field.val();
-            var hasKey = $field.data('has-key') === '1';
-
-            // Update data attribute to reflect that we're entering a new key
-            if (value.length > 0 && value !== '••••••••••••••••••••••••••••••••') {
-                $field.data('has-key', '0');
-                $field.attr('placeholder', 'Enter your Emailit API key');
-            }
+        replaceApiKey: function(e) {
+            e.preventDefault();
+            
+            var $container = $('.emailit-api-key-container');
+            var $actions = $('.emailit-api-key-actions');
+            var $info = $('.emailit-existing-key-info');
+            
+            // Hide the info and buttons
+            $info.hide();
+            $actions.hide();
+            
+            // Show input field
+            var $inputField = $('<input type="text" id="emailit_api_key" name="emailit_api_key" value="" placeholder="Enter new API key" class="regular-text" data-has-key="0" />');
+            $container.append($inputField);
+            
+            // Focus on the input
+            $inputField.focus();
         },
 
         /**
