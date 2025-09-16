@@ -125,6 +125,10 @@ This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) 
 
 ## 📋 **Previous Updates**
 
+### Version 3.0.4 - Squished more bugs
+- Improved bounce handling for FluentCRM
+- Fixed some priority settings
+
 ### Version 3.0.2 - Squished some bugs
 - **Squished some bugs**: Fixed various issues and improved overall stability
 
