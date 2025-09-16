@@ -1,6 +1,12 @@
 # Emailit Integration for WordPress
 
-**Version 3.0.3** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
+**Version 3.0.4** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
+
+## 🐛 **Version 3.0.4 - Priority Conflict Fix**
+- **Fixed Hook Priority Conflict**: Resolved false "High Priority Email Filter" warnings in admin dashboard
+- **Conditional Hook Registration**: Hooks now only register when Emailit is properly configured (API key present)
+- **Improved Conflict Detection**: Enhanced conflict detection logic to exclude Emailit's own functions
+- **Better Performance**: Reduced unnecessary hook processing when plugin isn't configured
 
 ## 🐛 **Version 3.0.3 - FluentCRM Integration Fixes**
 - **Fixed FluentCRM Bounce Forwarding**: Bounce events from Emailit are now properly forwarded to FluentCRM subscribers

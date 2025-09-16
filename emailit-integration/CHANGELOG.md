@@ -2,6 +2,24 @@
 
 All notable changes to the Emailit Integration plugin will be documented in this file.
 
+## [3.0.4] - 2025-01-15
+
+### Fixed
+- **Hook Priority Conflict**: Resolved false "High Priority Email Filter" warnings in admin dashboard
+- **Conflict Detection Logic**: Fixed conflict detection to properly exclude Emailit's own functions
+- **Priority Check Accuracy**: Updated priority comparison from `< 10` to `< 5` to match actual implementation
+
+### Enhanced
+- **Conditional Hook Registration**: Hooks now only register when Emailit is properly configured (API key present)
+- **Performance Optimization**: Reduced unnecessary hook processing when plugin isn't configured
+- **Hook Management**: Added `reinit_hooks()` method for dynamic hook management
+
+### Technical Details
+- Added API key check in `init_hooks()` to prevent unnecessary hook registration
+- Improved conflict detection logic to exclude both `emailit` and `Emailit` function names
+- Updated priority comparison logic to match actual hook priority (5)
+- Added case-insensitive filtering for better conflict detection accuracy
+
 ## [3.0.3] - 2025-01-15
 
 ### Fixed

@@ -54,6 +54,11 @@ class Emailit_Mailer {
      * Initialize WordPress hooks
      */
     private function init_hooks() {
+        // Only hook if Emailit is properly configured
+        if (empty(get_option('emailit_api_key'))) {
+            return;
+        }
+
         // Use pre_wp_mail filter for WordPress 5.7+ for complete override
         // Use priority 5 to ensure we hook in before FluentCRM and other plugins
         if (version_compare(get_bloginfo('version'), '5.7', '>=')) {
@@ -693,6 +698,14 @@ class Emailit_Mailer {
                 remove_filter('fluentmail_will_log_email', array($this, 'debug_fluentmail_logging'), 5);
             }
         }
+    }
+
+    /**
+     * Reinitialize hooks (useful when API key is configured)
+     */
+    public function reinit_hooks() {
+        $this->remove_hooks();
+        $this->init_hooks();
     }
 
     /**

@@ -2270,10 +2270,13 @@ class Emailit_Admin {
         if (isset($wp_filter['pre_wp_mail'])) {
             $high_priority_filters = array();
             foreach ($wp_filter['pre_wp_mail']->callbacks as $priority => $callbacks) {
-                if ($priority < 10) { // Our plugin uses priority 10
+                if ($priority < 5) { // Our plugin uses priority 5
                     foreach ($callbacks as $callback) {
                         $function_name = $this->get_callback_name($callback['function']);
-                        if ($function_name && strpos($function_name, 'emailit') === false) {
+                        // Only flag non-Emailit functions with higher priority
+                        if ($function_name && 
+                            strpos($function_name, 'emailit') === false && 
+                            strpos($function_name, 'Emailit') === false) {
                             $high_priority_filters[] = $function_name;
                         }
                     }
