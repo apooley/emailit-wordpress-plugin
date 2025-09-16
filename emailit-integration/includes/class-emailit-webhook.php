@@ -488,8 +488,8 @@ class Emailit_Webhook {
             'email.delivery.bounced' => Emailit_Logger::STATUS_BOUNCED,
             'email.delivery.complained' => Emailit_Logger::STATUS_COMPLAINED,
             'email.delivery.failed' => Emailit_Logger::STATUS_FAILED,
-            'email.delivery.hardfail' => Emailit_Logger::STATUS_FAILED,
-            'email.delivery.softfail' => Emailit_Logger::STATUS_FAILED,
+            'email.delivery.hardfail' => Emailit_Logger::STATUS_BOUNCED,  // HARDFAIL -> BOUNCED
+            'email.delivery.softfail' => Emailit_Logger::STATUS_DELAYED,  // SOFTFAIL -> DELAYED
             'email.delivery.error' => Emailit_Logger::STATUS_FAILED,
             'email.delivery.held' => Emailit_Logger::STATUS_HELD,
             'email.delivery.delayed' => Emailit_Logger::STATUS_DELAYED,
