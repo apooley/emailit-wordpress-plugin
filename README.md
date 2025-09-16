@@ -5,7 +5,7 @@ This repository contains the **Emailit Integration for WordPress** plugin, a com
 ![WordPress](https://img.shields.io/badge/WordPress-5.7+-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-green.svg)
 ![License](https://img.shields.io/badge/License-GPL%20v2-blue.svg)
-![Version](https://img.shields.io/badge/Version-3.0.2-green.svg)
+![Version](https://img.shields.io/badge/Version-3.0.4-green.svg)
 
 ## 📁 Repository Contents
 
