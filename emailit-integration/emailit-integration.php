@@ -97,11 +97,20 @@ class Emailit_Integration {
             return;
         }
 
+        // Handle plugin conflicts
+        $this->handle_plugin_conflicts();
+
         // Load required files
         $this->load_dependencies();
 
         // Initialize components
         $this->init_components();
+
+        // Initialize memory manager
+        $this->init_memory_manager();
+
+        // Initialize log archiver
+        $this->init_log_archiver();
 
         // Hook into WordPress
         $this->setup_hooks();
@@ -113,6 +122,83 @@ class Emailit_Integration {
     /**
      * Check system compatibility
      */
+    /**
+     * Handle plugin conflicts
+     */
+    private function handle_plugin_conflicts() {
+        // Handle Breakdance plugin conflict
+        if (class_exists('Breakdance\AJAX\BreakdanceAjaxHandlerException')) {
+            $this->handle_breakdance_conflict();
+        }
+        
+        // Handle other potential conflicts
+        $this->handle_other_conflicts();
+    }
+
+    /**
+     * Handle Breakdance plugin conflict
+     */
+    private function handle_breakdance_conflict() {
+        // Check PHP version for Breakdance compatibility
+        if (version_compare(PHP_VERSION, '8.0', '>=')) {
+            // Suppress Breakdance deprecation warnings temporarily
+            add_action('init', function() {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    // Only suppress in debug mode to avoid hiding other important warnings
+                    set_error_handler(function($severity, $message, $file, $line) {
+                        // Suppress Breakdance-specific deprecation warnings
+                        if (strpos($file, 'breakdance') !== false && 
+                            strpos($message, 'Implicitly marking parameter') !== false) {
+                            return true; // Suppress this specific warning
+                        }
+                        return false; // Let other warnings through
+                    }, E_DEPRECATED);
+                }
+            });
+            
+            // Add admin notice about Breakdance compatibility
+            add_action('admin_notices', array($this, 'breakdance_compatibility_notice'));
+        }
+    }
+
+    /**
+     * Handle other plugin conflicts
+     */
+    private function handle_other_conflicts() {
+        // Add conflict detection for other plugins as needed
+        $conflicts = array();
+        
+        // Check for known conflicting plugins
+        if (function_exists('is_plugin_active')) {
+            $active_plugins = get_option('active_plugins', array());
+            
+            foreach ($active_plugins as $plugin) {
+                if (strpos($plugin, 'conflicting-plugin') !== false) {
+                    $conflicts[] = $plugin;
+                }
+            }
+        }
+        
+        if (!empty($conflicts)) {
+            add_action('admin_notices', function() use ($conflicts) {
+                echo '<div class="notice notice-warning"><p>';
+                printf(__('Emailit detected potential conflicts with: %s. Please test email functionality thoroughly.', 'emailit-integration'), implode(', ', $conflicts));
+                echo '</p></div>';
+            });
+        }
+    }
+
+    /**
+     * Breakdance compatibility notice
+     */
+    public function breakdance_compatibility_notice() {
+        if (current_user_can('manage_options')) {
+            echo '<div class="notice notice-info"><p>';
+            printf(__('Emailit is running with Breakdance compatibility mode enabled. If you experience any issues, please contact support.', 'emailit-integration'));
+            echo '</p></div>';
+        }
+    }
+
     private function is_compatible() {
         global $wp_version;
 
@@ -173,7 +259,7 @@ class Emailit_Integration {
     }
 
     /**
-     * Autoload classes
+     * WordPress-friendly PSR-4 compatible autoloader with performance optimization
      */
     public function autoload($class) {
         // Only autoload our plugin classes
@@ -181,12 +267,56 @@ class Emailit_Integration {
             return;
         }
 
-        // Convert class name to file name
+        // Static cache for class mappings to improve performance
+        static $class_map = null;
+        static $loaded_classes = array();
+
+        // Initialize class map if not already done
+        if ($class_map === null) {
+            $class_map = array(
+                'Emailit_Api' => 'class-emailit-api.php',
+                'Emailit_Logger' => 'class-emailit-logger.php',
+                'Emailit_Queue' => 'class-emailit-queue.php',
+                'Emailit_Mailer' => 'class-emailit-mailer.php',
+                'Emailit_Webhook' => 'class-emailit-webhook.php',
+                'Emailit_Admin' => 'class-emailit-admin.php',
+                'Emailit_Health_Monitor' => 'class-emailit-health-monitor.php',
+                'Emailit_Alert_Manager' => 'class-emailit-alert-manager.php',
+                'Emailit_Metrics_Collector' => 'class-emailit-metrics-collector.php',
+                'Emailit_Error_Handler' => 'class-emailit-error-handler.php',
+                'Emailit_FluentCRM_Handler' => 'class-emailit-fluentcrm-handler.php',
+                'Emailit_Webhook_Monitor' => 'class-emailit-webhook-monitor.php',
+                'Emailit_Bounce_Classifier' => 'class-emailit-bounce-classifier.php',
+            'Emailit_Query_Optimizer' => 'class-emailit-query-optimizer.php',
+            'Emailit_Database_Optimizer' => 'class-emailit-database-optimizer.php',
+            'Emailit_Sanitizer' => 'class-emailit-sanitizer.php',
+            'Emailit_Memory_Manager' => 'class-emailit-memory-manager.php',
+            'Emailit_Log_Archiver' => 'class-emailit-log-archiver.php',
+            );
+        }
+
+        // Check if class is already loaded
+        if (isset($loaded_classes[$class])) {
+            return;
+        }
+
+        // Check if we have a direct mapping
+        if (isset($class_map[$class])) {
+            $file = EMAILIT_PLUGIN_DIR . 'includes/' . $class_map[$class];
+            if (file_exists($file)) {
+                require_once $file;
+                $loaded_classes[$class] = true;
+                return;
+            }
+        }
+
+        // Fallback to legacy naming convention
         $file = strtolower(str_replace('_', '-', $class));
         $file = EMAILIT_PLUGIN_DIR . 'includes/class-' . $file . '.php';
 
         if (file_exists($file)) {
             require_once $file;
+            $loaded_classes[$class] = true;
         }
     }
 
@@ -237,6 +367,26 @@ class Emailit_Integration {
         
         // Add bounce classification columns if needed
         $this->add_bounce_classification_columns();
+    }
+
+    /**
+     * Initialize memory manager
+     */
+    private function init_memory_manager() {
+        // Initialize memory manager for performance monitoring
+        if (class_exists('Emailit_Memory_Manager')) {
+            new Emailit_Memory_Manager();
+        }
+    }
+
+    /**
+     * Initialize log archiver
+     */
+    private function init_log_archiver() {
+        // Initialize log archiver for log management
+        if (class_exists('Emailit_Log_Archiver')) {
+            new Emailit_Log_Archiver();
+        }
     }
 
     /**
@@ -502,6 +652,12 @@ class Emailit_Integration {
         // Run database migrations
         $this->run_database_migrations();
         
+        // Add response_time column if it doesn't exist
+        $this->add_response_time_column();
+        
+        // Validate and fix schema inconsistencies
+        $this->validate_and_fix_schema();
+        
         // Create health monitoring tables
         Emailit_Health_Migration::create_tables();
         
@@ -549,33 +705,38 @@ class Emailit_Integration {
     }
 
     /**
-     * Create database tables
+     * Create database tables with best practices
      */
     private function create_tables() {
-        global $wpdb;
+        $wpdb = $GLOBALS['wpdb'];
 
+        // Enhanced charset and collation for better internationalization
         $charset_collate = $wpdb->get_charset_collate();
+        if (empty($charset_collate)) {
+            $charset_collate = 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+        }
 
         // Initialize queue to create its table
         $queue = new Emailit_Queue();
         $queue->create_table();
 
-        // Email logs table
+        // Email logs table with enhanced structure
         $table_logs = $wpdb->prefix . 'emailit_logs';
         $sql_logs = "CREATE TABLE $table_logs (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            email_id varchar(255) DEFAULT NULL,
-            token varchar(255) DEFAULT NULL,
-            message_id varchar(255) DEFAULT NULL,
+            email_id varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            token varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            message_id varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
             queue_id bigint(20) UNSIGNED DEFAULT NULL,
-            to_email text NOT NULL,
-            from_email varchar(255) NOT NULL,
-            reply_to varchar(255) DEFAULT NULL,
-            subject text NOT NULL,
-            body_html longtext,
-            body_text longtext,
-            status varchar(50) DEFAULT 'pending',
-            details text,
+            to_email text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            from_email varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            reply_to varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            subject text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            body_html longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+            body_text longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+            response_time decimal(10,3) DEFAULT NULL,
+            status varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+            details text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
             sent_at datetime DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -584,20 +745,24 @@ class Emailit_Integration {
             KEY idx_token (token),
             KEY idx_status (status),
             KEY idx_queue_id (queue_id),
-            KEY idx_created_at (created_at)
-        ) $charset_collate;";
+            KEY idx_created_at (created_at),
+            KEY idx_from_email (from_email),
+            KEY idx_sent_at (sent_at),
+            KEY idx_status_created (status, created_at),
+            CONSTRAINT fk_emailit_logs_queue_id FOREIGN KEY (queue_id) REFERENCES {$wpdb->prefix}emailit_queue(id) ON DELETE SET NULL
+        ) $charset_collate ENGINE=InnoDB;";
 
-        // Webhook logs table
+        // Webhook logs table with enhanced structure
         $table_webhooks = $wpdb->prefix . 'emailit_webhook_logs';
         $sql_webhooks = "CREATE TABLE $table_webhooks (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            webhook_request_id varchar(255) DEFAULT NULL,
-            event_id varchar(255) DEFAULT NULL,
-            event_type varchar(100) DEFAULT NULL,
-            email_id varchar(255) DEFAULT NULL,
-            status varchar(50) DEFAULT NULL,
-            details text,
-            raw_payload longtext,
+            webhook_request_id varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            event_id varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            event_type varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            email_id varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            status varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            details text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+            raw_payload longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
             processed_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY idx_email_id (email_id),
@@ -606,15 +771,104 @@ class Emailit_Integration {
             KEY idx_status (status),
             KEY idx_processed_at (processed_at),
             KEY idx_webhook_request_id (webhook_request_id),
-            KEY idx_email_id_event_type (email_id, event_type)
-        ) $charset_collate;";
+            KEY idx_email_id_event_type (email_id, event_type),
+            KEY idx_event_type_processed (event_type, processed_at),
+            CONSTRAINT fk_emailit_webhook_logs_email_id FOREIGN KEY (email_id) REFERENCES {$wpdb->prefix}emailit_logs(email_id) ON DELETE CASCADE
+        ) $charset_collate ENGINE=InnoDB;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql_logs);
         dbDelta($sql_webhooks);
 
         // Store database version
-        update_option('emailit_db_version', '1.0.0');
+        update_option('emailit_db_version', '2.0.0');
+    }
+
+    /**
+     * Add response_time column to logs table if it doesn't exist
+     */
+    private function add_response_time_column() {
+        global $wpdb;
+        
+        $table_logs = $wpdb->prefix . 'emailit_logs';
+        
+        // Check if response_time column exists
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'response_time'",
+            DB_NAME,
+            $table_logs
+        ));
+        
+        if (empty($column_exists)) {
+            // Add the column
+            $wpdb->query("ALTER TABLE `$table_logs` ADD COLUMN `response_time` decimal(10,3) DEFAULT NULL AFTER `body_text`");
+        }
+    }
+
+    /**
+     * Validate and fix schema inconsistencies
+     */
+    private function validate_and_fix_schema() {
+        global $wpdb;
+        
+        $table_logs = $wpdb->prefix . 'emailit_logs';
+        
+        // Check bounce_confidence column type
+        $column_info = $wpdb->get_row($wpdb->prepare(
+            "SELECT DATA_TYPE, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s",
+            DB_NAME,
+            $table_logs,
+            'bounce_confidence'
+        ));
+        
+        if ($column_info && $column_info->DATA_TYPE === 'tinyint') {
+            // Fix the column type from TINYINT to DECIMAL
+            $wpdb->query("ALTER TABLE `$table_logs` MODIFY COLUMN `bounce_confidence` DECIMAL(3,2) DEFAULT NULL");
+            
+            // Log the schema fix
+            error_log('[Emailit] Fixed bounce_confidence column type from TINYINT to DECIMAL');
+        }
+        
+        // Check for other potential schema issues
+        $this->validate_table_structure($table_logs);
+    }
+
+    /**
+     * Validate table structure
+     */
+    private function validate_table_structure($table_name) {
+        global $wpdb;
+        
+        // Get current table structure
+        $columns = $wpdb->get_results("DESCRIBE `$table_name`");
+        $column_types = array();
+        
+        foreach ($columns as $column) {
+            $column_types[$column->Field] = $column->Type;
+        }
+        
+        // Expected column types
+        $expected_types = array(
+            'bounce_confidence' => 'decimal(3,2)',
+            'response_time' => 'decimal(10,3)'
+        );
+        
+        // Check for type mismatches
+        foreach ($expected_types as $column => $expected_type) {
+            if (isset($column_types[$column]) && $column_types[$column] !== $expected_type) {
+                error_log("[Emailit] Schema mismatch detected: $column is {$column_types[$column]}, expected $expected_type");
+                
+                // Attempt to fix the column type
+                try {
+                    $wpdb->query("ALTER TABLE `$table_name` MODIFY COLUMN `$column` $expected_type DEFAULT NULL");
+                    error_log("[Emailit] Successfully fixed column type for $column");
+                } catch (Exception $e) {
+                    error_log("[Emailit] Failed to fix column type for $column: " . $e->getMessage());
+                }
+            }
+        }
     }
 
     /**
@@ -701,7 +955,7 @@ class Emailit_Integration {
             $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_classification` VARCHAR(50) DEFAULT NULL AFTER `status`");
             $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_category` VARCHAR(50) DEFAULT NULL AFTER `bounce_classification`");
             $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_severity` VARCHAR(20) DEFAULT NULL AFTER `bounce_category`");
-            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_confidence` TINYINT(3) UNSIGNED DEFAULT NULL AFTER `bounce_severity`");
+            $wpdb->query("ALTER TABLE `{$logs_table}` ADD COLUMN `bounce_confidence` DECIMAL(3,2) DEFAULT NULL AFTER `bounce_severity`");
             
             // Add indexes for bounce classification
             $wpdb->query("ALTER TABLE `{$logs_table}` ADD INDEX `idx_bounce_classification` (`bounce_classification`)");

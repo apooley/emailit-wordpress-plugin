@@ -108,6 +108,7 @@ $stats = $logger->get_stats();
     <!-- Email Logs Table -->
     <?php if (!empty($logs)) : ?>
         <form id="emailit-bulk-form" method="post">
+            <?php wp_nonce_field('emailit_bulk_actions', 'emailit_bulk_nonce'); ?>
             <div class="tablenav top">
                 <div class="alignleft actions bulkactions">
                     <label for="bulk-action-selector-top" class="screen-reader-text"><?php _e('Select bulk action', 'emailit-integration'); ?></label>

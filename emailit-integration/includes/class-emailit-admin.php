@@ -47,6 +47,29 @@ class Emailit_Admin {
     }
 
     /**
+     * Centralized input sanitization method
+     * 
+     * @param mixed $input The input to sanitize
+     * @param string $type The type of sanitization to apply
+     * @return mixed Sanitized input
+     */
+    private function sanitize_input($input, $type = 'text') {
+        return Emailit_Sanitizer::sanitize_input($input, $type);
+    }
+
+    /**
+     * Validate input against whitelist
+     * 
+     * @param mixed $input The input to validate
+     * @param array $allowed_values Array of allowed values
+     * @param mixed $default Default value if input is invalid
+     * @return mixed Validated input or default
+     */
+    private function validate_whitelist($input, $allowed_values, $default = null) {
+        return Emailit_Sanitizer::validate_whitelist($input, $allowed_values, $default);
+    }
+
+    /**
      * Initialize admin functionality
      */
     public function init() {
@@ -1233,7 +1256,7 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $test_email = sanitize_email($_POST['test_email']);
+        $test_email = $this->sanitize_input($_POST['test_email'], 'email');
         if (empty($test_email)) {
             $test_email = get_bloginfo('admin_email');
         }
@@ -1288,7 +1311,7 @@ class Emailit_Admin {
                 return;
             }
 
-            $test_email = sanitize_email($_POST['test_email']);
+            $test_email = $this->sanitize_input($_POST['test_email'], 'email');
             if (empty($test_email)) {
                 $test_email = get_bloginfo('admin_email');
             }
@@ -1532,7 +1555,7 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $log_id = intval($_POST['log_id']);
+        $log_id = $this->sanitize_input($_POST['log_id'], 'int');
         $log = $this->logger->get_log($log_id);
 
         if (!$log) {
@@ -1559,7 +1582,7 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $log_id = intval($_POST['log_id']);
+        $log_id = $this->sanitize_input($_POST['log_id'], 'int');
         $result = $this->logger->delete_log($log_id);
 
         if ($result) {
@@ -1580,7 +1603,7 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $log_id = intval($_POST['log_id']);
+        $log_id = $this->sanitize_input($_POST['log_id'], 'int');
         $mailer = emailit_get_component('mailer');
         $result = $mailer->resend_email($log_id);
 
@@ -1617,7 +1640,13 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $log_ids = isset($_POST['log_ids']) ? array_map('intval', $_POST['log_ids']) : array();
+        // Additional nonce verification for bulk actions
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'emailit_admin_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'emailit-integration')));
+            return;
+        }
+
+        $log_ids = isset($_POST['log_ids']) ? $this->sanitize_input($_POST['log_ids'], 'int') : array();
 
         if (empty($log_ids)) {
             wp_send_json_error(array(
@@ -1707,10 +1736,10 @@ class Emailit_Admin {
             wp_die(__('Insufficient permissions.', 'emailit-integration'));
         }
 
-        $format = isset($_POST['format']) ? sanitize_text_field($_POST['format']) : 'csv';
-        $status_filter = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
-        $date_from = isset($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : '';
-        $date_to = isset($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : '';
+        $format = isset($_POST['format']) ? $this->validate_whitelist($this->sanitize_input($_POST['format'], 'text'), array('csv', 'json'), 'csv') : 'csv';
+        $status_filter = isset($_POST['status']) ? $this->sanitize_input($_POST['status'], 'text') : '';
+        $date_from = isset($_POST['date_from']) ? $this->sanitize_input($_POST['date_from'], 'text') : '';
+        $date_to = isset($_POST['date_to']) ? $this->sanitize_input($_POST['date_to'], 'text') : '';
 
         $args = array(
             'per_page' => 1000, // Limit export size
@@ -3537,8 +3566,8 @@ class Emailit_Admin {
 
             // Clear all API key validation caches
             global $wpdb;
-            $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_emailit_api_key_valid_%'");
-            $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_emailit_api_key_valid_%'");
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_emailit_api_key_valid_%'));
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_timeout_emailit_api_key_valid_%'));
 
             wp_send_json_success(array('message' => __('API cache cleared successfully.', 'emailit-integration')));
         } catch (Exception $e) {

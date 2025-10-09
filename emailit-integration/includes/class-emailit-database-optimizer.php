@@ -309,8 +309,9 @@ class Emailit_Database_Optimizer {
 
         $tables = array($this->logs_table, $this->webhook_logs_table, $this->queue_table);
         foreach ($tables as $table) {
-            if ($wpdb->get_var("SHOW TABLES LIKE '$table'") === $table) {
-                $row_count = $wpdb->get_var("SELECT COUNT(*) FROM $table");
+            $table_escaped = esc_sql($table);
+            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) === $table) {
+                $row_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `%s`", $table));
                 if ($row_count > 100000) { // More than 100k rows
                     $issues[] = "Table $table has $row_count rows - consider archiving old data";
                 }

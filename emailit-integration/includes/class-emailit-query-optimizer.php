@@ -28,11 +28,101 @@ class Emailit_Query_Optimizer {
      * Constructor
      */
     public function __construct() {
-        global $wpdb;
+        $wpdb = $GLOBALS['wpdb'];
 
         $this->logs_table = $wpdb->prefix . 'emailit_logs';
         $this->webhook_logs_table = $wpdb->prefix . 'emailit_webhook_logs';
         $this->queue_table = $wpdb->prefix . 'emailit_queue';
+
+        // Ensure optimal indexes exist
+        $this->ensure_optimal_indexes();
+    }
+
+    /**
+     * Ensure optimal database indexes exist
+     */
+    private function ensure_optimal_indexes() {
+        $wpdb = $GLOBALS['wpdb'];
+
+        // Check and add missing indexes for better query performance
+        $indexes_to_add = array(
+            // Email logs table indexes
+            array(
+                'table' => $this->logs_table,
+                'index' => 'idx_from_email',
+                'columns' => 'from_email'
+            ),
+            array(
+                'table' => $this->logs_table,
+                'index' => 'idx_sent_at',
+                'columns' => 'sent_at'
+            ),
+            array(
+                'table' => $this->logs_table,
+                'index' => 'idx_status_created',
+                'columns' => 'status, created_at'
+            ),
+            array(
+                'table' => $this->logs_table,
+                'index' => 'idx_response_time',
+                'columns' => 'response_time'
+            ),
+            // Webhook logs table indexes
+            array(
+                'table' => $this->webhook_logs_table,
+                'index' => 'idx_event_type_processed',
+                'columns' => 'event_type, processed_at'
+            ),
+            array(
+                'table' => $this->webhook_logs_table,
+                'index' => 'idx_status_processed',
+                'columns' => 'status, processed_at'
+            ),
+            // Queue table indexes
+            array(
+                'table' => $this->queue_table,
+                'index' => 'idx_status_scheduled',
+                'columns' => 'status, scheduled_at'
+            ),
+            array(
+                'table' => $this->queue_table,
+                'index' => 'idx_created_at',
+                'columns' => 'created_at'
+            )
+        );
+
+        foreach ($indexes_to_add as $index_info) {
+            $this->add_index_if_not_exists($index_info['table'], $index_info['index'], $index_info['columns']);
+        }
+    }
+
+    /**
+     * Add index if it doesn't exist
+     */
+    private function add_index_if_not_exists($table, $index_name, $columns) {
+        $wpdb = $GLOBALS['wpdb'];
+
+        // Check if index exists
+        $index_exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND INDEX_NAME = %s",
+            DB_NAME,
+            $table,
+            $index_name
+        ));
+
+        if (!$index_exists) {
+            // Use proper escaping for table and index names
+            $table_escaped = esc_sql($table);
+            $index_name_escaped = esc_sql($index_name);
+            $columns_escaped = esc_sql($columns);
+            $sql = "ALTER TABLE `$table_escaped` ADD INDEX `$index_name_escaped` ($columns_escaped)";
+            $wpdb->query($sql);
+            
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("[Emailit] Added index $index_name to table $table");
+            }
+        }
     }
 
     /**
@@ -54,8 +144,9 @@ class Emailit_Query_Optimizer {
 
         $args = wp_parse_args($args, $defaults);
 
-        // Create cache key
-        $cache_key = 'email_logs_' . md5(serialize($args));
+        // Create cache key with version for cache invalidation
+        $cache_version = get_option('emailit_cache_version', '1.0');
+        $cache_key = 'email_logs_' . md5(serialize($args) . $cache_version);
         $cached_result = wp_cache_get($cache_key, self::CACHE_GROUP);
 
         if ($cached_result !== false) {
@@ -381,14 +472,14 @@ class Emailit_Query_Optimizer {
         );
 
         foreach ($tables as $name => $table) {
-            $table_info = $wpdb->get_row("
+            $table_info = $wpdb->get_row($wpdb->prepare("
                 SELECT 
                     table_rows,
                     ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb
                 FROM information_schema.tables 
                 WHERE table_schema = DATABASE() 
-                AND table_name = '$table'
-            ", ARRAY_A);
+                AND table_name = %s
+            ", $table), ARRAY_A);
 
             if ($table_info) {
                 $metrics[$name] = array(
@@ -477,5 +568,95 @@ class Emailit_Query_Optimizer {
         }
 
         return null;
+    }
+
+    /**
+     * Clear all query caches
+     */
+    public function clear_query_cache() {
+        wp_cache_flush_group(self::CACHE_GROUP);
+        
+        // Increment cache version to invalidate all cached queries
+        $current_version = get_option('emailit_cache_version', '1.0');
+        $new_version = (float) $current_version + 0.1;
+        update_option('emailit_cache_version', $new_version);
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("[Emailit] Cleared query cache, version updated to $new_version");
+        }
+    }
+
+    /**
+     * Get cache statistics
+     */
+    public function get_cache_stats() {
+        global $wp_object_cache;
+        
+        $stats = array(
+            'cache_group' => self::CACHE_GROUP,
+            'cache_version' => get_option('emailit_cache_version', '1.0'),
+            'cache_enabled' => wp_using_ext_object_cache(),
+        );
+
+        // Get cache hit/miss statistics if available
+        if (method_exists($wp_object_cache, 'get_stats')) {
+            $cache_stats = $wp_object_cache->get_stats();
+            $stats['hits'] = $cache_stats['hits'] ?? 0;
+            $stats['misses'] = $cache_stats['misses'] ?? 0;
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Optimize database tables
+     */
+    public function optimize_tables() {
+        $wpdb = $GLOBALS['wpdb'];
+        
+        $tables = array(
+            $this->logs_table,
+            $this->webhook_logs_table,
+            $this->queue_table
+        );
+
+        foreach ($tables as $table) {
+            $wpdb->query("OPTIMIZE TABLE `$table`");
+        }
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("[Emailit] Optimized database tables");
+        }
+    }
+
+    /**
+     * Analyze table performance
+     */
+    public function analyze_table_performance() {
+        $wpdb = $GLOBALS['wpdb'];
+        
+        $tables = array(
+            $this->logs_table,
+            $this->webhook_logs_table,
+            $this->queue_table
+        );
+
+        $analysis = array();
+
+        foreach ($tables as $table) {
+            $result = $wpdb->get_row("SHOW TABLE STATUS LIKE '$table'", ARRAY_A);
+            if ($result) {
+                $analysis[$table] = array(
+                    'rows' => $result['Rows'],
+                    'data_length' => $result['Data_length'],
+                    'index_length' => $result['Index_length'],
+                    'data_free' => $result['Data_free'],
+                    'engine' => $result['Engine'],
+                    'collation' => $result['Collation']
+                );
+            }
+        }
+
+        return $analysis;
     }
 }

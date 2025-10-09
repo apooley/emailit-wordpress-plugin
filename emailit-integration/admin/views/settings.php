@@ -61,6 +61,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
         <form id="emailit-settings-form" method="post" action="options.php">
             <?php
             settings_fields('emailit-settings');
+            wp_nonce_field('emailit_settings_nonce', 'emailit_settings_nonce');
             ?>
 
             <!-- API Configuration -->
@@ -445,6 +446,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             <form method="post" action="options.php">
                 <?php
                 settings_fields('emailit-advanced-settings');
+                wp_nonce_field('emailit_advanced_settings_nonce', 'emailit_advanced_settings_nonce');
                 ?>
 
             <!-- Performance & Queue Settings -->
@@ -778,6 +780,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 <form method="post" action="options.php">
                     <?php
                     settings_fields('emailit-fluentcrm-settings');
+                    wp_nonce_field('emailit_fluentcrm_settings_nonce', 'emailit_fluentcrm_settings_nonce');
                     ?>
                     <table class="form-table emailit-form-table" role="presentation">
                         <tbody>

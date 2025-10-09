@@ -52,7 +52,7 @@ class Emailit_Uninstaller {
         );
 
         foreach ($tables as $table) {
-            // Use direct escaping for table names since %i placeholder doesn't exist
+            // Use proper table name escaping to prevent SQL injection
             $wpdb->query("DROP TABLE IF EXISTS `" . esc_sql($table) . "`");
         }
     }

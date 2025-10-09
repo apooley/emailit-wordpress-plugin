@@ -46,7 +46,7 @@ class Emailit_Logger {
      * Constructor
      */
     public function __construct() {
-        global $wpdb;
+        $wpdb = $GLOBALS['wpdb'];
 
         $this->logs_table = $wpdb->prefix . 'emailit_logs';
         $this->webhook_logs_table = $wpdb->prefix . 'emailit_webhook_logs';
@@ -58,7 +58,7 @@ class Emailit_Logger {
     /**
      * Log email event
      */
-    public function log_email(array $email_data, ?array $api_response = null, ?string $status = null) {
+    public function log_email(array $email_data, ?array $api_response = null, ?string $status = null, ?float $response_time = null) {
         global $wpdb;
 
         // Skip logging if disabled
@@ -93,6 +93,11 @@ class Emailit_Logger {
             $log_data['body_text'] = $this->html_to_text($email_data['message']);
         } else {
             $log_data['body_text'] = $email_data['message'];
+        }
+
+        // Add response time if available
+        if ($response_time !== null) {
+            $log_data['response_time'] = $response_time;
         }
 
         // Add API response data if available
@@ -322,13 +327,17 @@ class Emailit_Logger {
 
         $args = wp_parse_args($args, $defaults);
 
-        // Build WHERE clause
+        // Build WHERE clause with proper sanitization
         $where_conditions = array('1=1');
         $where_values = array();
 
         if (!empty($args['status'])) {
-            $where_conditions[] = 'status = %s';
-            $where_values[] = $args['status'];
+            // Validate status against allowed values to prevent injection
+            $allowed_statuses = array('pending', 'sent', 'sent_to_api', 'delivered', 'failed', 'bounced', 'complained', 'held', 'delayed', 'opened', 'clicked', 'unsubscribed');
+            if (in_array($args['status'], $allowed_statuses)) {
+                $where_conditions[] = 'status = %s';
+                $where_values[] = $args['status'];
+            }
         }
 
         if (!empty($args['search'])) {
@@ -340,13 +349,19 @@ class Emailit_Logger {
         }
 
         if (!empty($args['date_from'])) {
-            $where_conditions[] = 'created_at >= %s';
-            $where_values[] = $args['date_from'] . ' 00:00:00';
+            // Validate date format to prevent injection
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $args['date_from'])) {
+                $where_conditions[] = 'created_at >= %s';
+                $where_values[] = $args['date_from'] . ' 00:00:00';
+            }
         }
 
         if (!empty($args['date_to'])) {
-            $where_conditions[] = 'created_at <= %s';
-            $where_values[] = $args['date_to'] . ' 23:59:59';
+            // Validate date format to prevent injection
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $args['date_to'])) {
+                $where_conditions[] = 'created_at <= %s';
+                $where_values[] = $args['date_to'] . ' 23:59:59';
+            }
         }
 
         $where_clause = implode(' AND ', $where_conditions);

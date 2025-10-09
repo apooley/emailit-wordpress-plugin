@@ -219,7 +219,7 @@ class Emailit_Metrics_Collector {
                 'failed_requests' => intval($recent_stats->failed_requests),
                 'success_rate' => $recent_stats->total_requests > 0 ? 
                     $recent_stats->successful_requests / $recent_stats->total_requests : 0,
-                'avg_response_time' => 0.5 // Placeholder - would need response_time column to calculate actual
+                'avg_response_time' => $this->calculate_avg_response_time('recent')
             ),
             'daily' => array(
                 'total_requests' => intval($daily_stats->total_requests),
@@ -227,9 +227,40 @@ class Emailit_Metrics_Collector {
                 'failed_requests' => intval($daily_stats->failed_requests),
                 'success_rate' => $daily_stats->total_requests > 0 ? 
                     $daily_stats->successful_requests / $daily_stats->total_requests : 0,
-                'avg_response_time' => 0.5 // Placeholder - would need response_time column to calculate actual
+                'avg_response_time' => $this->calculate_avg_response_time('daily')
             )
         );
+    }
+
+    /**
+     * Calculate average response time
+     */
+    private function calculate_avg_response_time($period = 'recent') {
+        global $wpdb;
+        
+        $table_logs = $wpdb->prefix . 'emailit_logs';
+        
+        $where_clause = '';
+        $where_values = array();
+        
+        if ($period === 'recent') {
+            $one_hour_ago = date('Y-m-d H:i:s', strtotime('-1 hour'));
+            $where_clause = "created_at >= %s";
+            $where_values[] = $one_hour_ago;
+        } elseif ($period === 'daily') {
+            $one_day_ago = date('Y-m-d H:i:s', strtotime('-24 hours'));
+            $where_clause = "created_at >= %s";
+            $where_values[] = $one_day_ago;
+        }
+        
+        $query = "SELECT AVG(response_time) FROM $table_logs WHERE response_time IS NOT NULL AND response_time > 0";
+        if (!empty($where_clause)) {
+            $query .= " AND " . $where_clause;
+        }
+        
+        $avg_response_time = $wpdb->get_var($wpdb->prepare($query, $where_values));
+        
+        return $avg_response_time ? round($avg_response_time, 3) : 0;
     }
 
     /**
@@ -604,7 +635,7 @@ class Emailit_Metrics_Collector {
                     'failed_requests' => intval($stats->failed_requests),
                     'success_rate' => $stats->total_requests > 0 ? 
                         $stats->successful_requests / $stats->total_requests : 0,
-                    'avg_response_time' => 0 // We don't track response time currently
+                    'avg_response_time' => $this->calculate_avg_response_time($time_period)
                 )
             );
         } catch (Exception $e) {

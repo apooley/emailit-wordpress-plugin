@@ -269,7 +269,7 @@ class Emailit_Webhook {
     }
 
     /**
-     * Verify webhook signature
+     * Verify webhook signature with enhanced security
      */
     private function verify_signature($body, $headers) {
         // Check for signature header
@@ -277,12 +277,39 @@ class Emailit_Webhook {
                            (isset($headers['X-Emailit-Signature']) ? $headers['X-Emailit-Signature'][0] : null);
 
         if (empty($signature_header)) {
+            $this->log_security_event('missing_signature', array('headers' => $headers));
             return false;
         }
 
         // Get timestamp header
         $timestamp = isset($headers['x_emailit_timestamp']) ? $headers['x_emailit_timestamp'][0] :
                     (isset($headers['X-Emailit-Timestamp']) ? $headers['X-Emailit-Timestamp'][0] : null);
+
+        // Validate timestamp to prevent replay attacks
+        if ($timestamp) {
+            $timestamp_int = intval($timestamp);
+            $current_time = time();
+            $time_diff = abs($current_time - $timestamp_int);
+            
+            // Reject requests older than 5 minutes
+            if ($time_diff > 300) {
+                $this->log_security_event('timestamp_expired', array(
+                    'timestamp' => $timestamp,
+                    'current_time' => $current_time,
+                    'time_diff' => $time_diff
+                ));
+                return false;
+            }
+            
+            // Check for replay attacks using nonce tracking
+            if (!$this->check_replay_attack($timestamp, $signature_header)) {
+                $this->log_security_event('replay_attack_detected', array(
+                    'timestamp' => $timestamp,
+                    'signature' => substr($signature_header, 0, 10) . '...'
+                ));
+                return false;
+            }
+        }
 
         // Handle signature format - Emailit sends direct hash, not sha256=hash format
         $expected_signature = $signature_header;
@@ -326,21 +353,95 @@ class Emailit_Webhook {
             }
         }
 
+        // Log security events
+        if (!$signature_matched) {
+            $this->log_security_event('signature_verification_failed', array(
+                'signature_header' => substr($signature_header, 0, 10) . '...',
+                'timestamp' => $timestamp,
+                'body_length' => strlen($body),
+                'signatures_tried' => count($signatures_to_try)
+            ));
+        }
+
         // Debug logging (only when WP_DEBUG is enabled)
         if (defined('WP_DEBUG') && WP_DEBUG) {
             $this->logger->log('Webhook signature verification details', Emailit_Logger::LEVEL_DEBUG, array(
-                'signature_header' => $signature_header,
-                'expected_signature' => $expected_signature,
+                'signature_header' => substr($signature_header, 0, 10) . '...',
+                'expected_signature' => substr($expected_signature, 0, 10) . '...',
                 'timestamp' => $timestamp,
                 'body_length' => strlen($body),
                 'webhook_secret_length' => strlen($this->webhook_secret),
-                'signatures_tried' => $signatures_to_try,
+                'signatures_tried' => count($signatures_to_try),
                 'signature_matched' => $signature_matched,
                 'matched_method' => $matched_method
             ));
         }
 
         return $signature_matched;
+    }
+
+    /**
+     * Check for replay attacks using nonce tracking
+     */
+    private function check_replay_attack($timestamp, $signature) {
+        $nonce_key = 'emailit_webhook_nonce_' . md5($timestamp . $signature);
+        
+        // Check if this nonce has been used before
+        if (get_transient($nonce_key)) {
+            return false; // Replay attack detected
+        }
+        
+        // Store nonce for 10 minutes (longer than timestamp window)
+        set_transient($nonce_key, true, 600);
+        
+        return true;
+    }
+
+    /**
+     * Log security events for monitoring
+     */
+    private function log_security_event($event_type, $data = array()) {
+        $this->logger->log('Webhook security event: ' . $event_type, Emailit_Logger::LEVEL_WARNING, array_merge($data, array(
+            'ip_address' => $this->get_client_ip(),
+            'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : 'Unknown',
+            'timestamp' => current_time('mysql')
+        )));
+        
+        // Store security events for admin review
+        $security_events = get_option('emailit_security_events', array());
+        $security_events[] = array(
+            'type' => $event_type,
+            'data' => $data,
+            'timestamp' => current_time('mysql'),
+            'ip' => $this->get_client_ip()
+        );
+        
+        // Keep only last 100 events
+        if (count($security_events) > 100) {
+            $security_events = array_slice($security_events, -100);
+        }
+        
+        update_option('emailit_security_events', $security_events);
+    }
+
+    /**
+     * Get client IP address
+     */
+    private function get_client_ip() {
+        $ip_keys = array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR');
+        
+        foreach ($ip_keys as $key) {
+            if (array_key_exists($key, $_SERVER) === true) {
+                foreach (explode(',', $_SERVER[$key]) as $ip) {
+                    $ip = trim($ip);
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                        return $ip;
+                    }
+                }
+            }
+        }
+        
+        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
     }
 
     /**
@@ -667,40 +768,6 @@ class Emailit_Webhook {
         return true;
     }
 
-    /**
-     * Get client IP address
-     */
-    private function get_client_ip() {
-        // Check for various headers that might contain the real IP
-        $headers = array(
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_REAL_IP',
-            'HTTP_CF_CONNECTING_IP', // Cloudflare
-            'HTTP_X_FORWARDED',
-            'HTTP_FORWARDED_FOR',
-            'HTTP_FORWARDED',
-            'REMOTE_ADDR'
-        );
-
-        foreach ($headers as $header) {
-            if (!empty($_SERVER[$header])) {
-                $ip = trim($_SERVER[$header]);
-
-                // Handle comma-separated IPs (X-Forwarded-For can contain multiple IPs)
-                if (strpos($ip, ',') !== false) {
-                    $ip = trim(explode(',', $ip)[0]);
-                }
-
-                // Validate IP
-                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                    return $ip;
-                }
-            }
-        }
-
-        // Fallback to REMOTE_ADDR
-        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
-    }
 
     /**
      * Get webhook endpoint URL

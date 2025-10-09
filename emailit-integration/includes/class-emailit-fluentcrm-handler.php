@@ -42,29 +42,173 @@ class Emailit_FluentCRM_Handler {
     }
 
     /**
-     * Check if FluentCRM is available
+     * Check if FluentCRM is available with version compatibility
      */
     private function check_fluentcrm_availability() {
-        return class_exists('FluentCrm\App\App') && 
-               class_exists('FluentCrm\App\Models\Subscriber') &&
-               function_exists('FluentCrm\App\Services\Helper');
+        // Check if FluentCRM is active
+        if (!class_exists('FluentCrm\App\App')) {
+            return false;
+        }
+
+        // Check FluentCRM version compatibility
+        $fluentcrm_version = $this->get_fluentcrm_version();
+        if (!$fluentcrm_version || version_compare($fluentcrm_version, '2.0.0', '<')) {
+            $this->logger->log('FluentCRM version too old for integration', Emailit_Logger::LEVEL_WARNING, array(
+                'version' => $fluentcrm_version,
+                'required' => '2.0.0'
+            ));
+            return false;
+        }
+
+        // Check required classes and functions
+        $required_classes = array(
+            'FluentCrm\App\Models\Subscriber',
+            'FluentCrm\App\Models\Contact',
+            'FluentCrm\App\Services\Helper'
+        );
+
+        foreach ($required_classes as $class) {
+            if (!class_exists($class)) {
+                $this->logger->log('FluentCRM class not found', Emailit_Logger::LEVEL_WARNING, array(
+                    'class' => $class,
+                    'version' => $fluentcrm_version
+                ));
+                return false;
+            }
+        }
+
+        // Check namespace compatibility
+        if (!$this->check_namespace_compatibility()) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * Initialize FluentCRM integration
+     * Get FluentCRM version
      */
-    private function init_fluentcrm_integration() {
-        if (!$this->is_fluentcrm_available) {
-            return;
+    private function get_fluentcrm_version() {
+        // Try to get version from plugin data
+        if (function_exists('get_plugin_data')) {
+            $plugin_file = WP_PLUGIN_DIR . '/fluent-crm/fluent-crm.php';
+            if (file_exists($plugin_file)) {
+                $plugin_data = get_plugin_data($plugin_file);
+                return $plugin_data['Version'] ?? null;
+            }
         }
 
-        // Hook into bounce classification actions
-        add_action('emailit_status_updated', array($this, 'handle_bounce_action'), 10, 3);
-        
-        // Hook into successful deliveries to reset bounce counts
-        add_action('emailit_status_updated', array($this, 'handle_successful_delivery'), 10, 3);
-        
-        $this->logger->log('FluentCRM integration initialized', Emailit_Logger::LEVEL_INFO);
+        // Try to get version from FluentCRM constant
+        if (defined('FLUENTCRM_VERSION')) {
+            return FLUENTCRM_VERSION;
+        }
+
+        // Try to get version from FluentCRM class
+        if (class_exists('FluentCrm\App\App')) {
+            try {
+                $app = FluentCrm\App\App::getInstance();
+                if (method_exists($app, 'getVersion')) {
+                    return $app->getVersion();
+                }
+            } catch (Exception $e) {
+                $this->logger->log('Error getting FluentCRM version', Emailit_Logger::LEVEL_WARNING, array(
+                    'error' => $e->getMessage()
+                ));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check namespace compatibility
+     */
+    private function check_namespace_compatibility() {
+        try {
+            // Test namespace compatibility by trying to instantiate a FluentCRM class
+            if (class_exists('FluentCrm\App\Models\Subscriber')) {
+                $reflection = new ReflectionClass('FluentCrm\App\Models\Subscriber');
+                return $reflection->isInstantiable();
+            }
+        } catch (Exception $e) {
+            $this->logger->log('FluentCRM namespace compatibility check failed', Emailit_Logger::LEVEL_WARNING, array(
+                'error' => $e->getMessage()
+            ));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Initialize FluentCRM integration with fallback handling
+     */
+    private function init_fluentcrm_integration() {
+        try {
+            // Test FluentCRM integration health
+            $this->test_fluentcrm_integration();
+            
+            // Add hooks for FluentCRM integration
+            add_action('emailit_bounce_processed', array($this, 'handle_bounce_event'), 10, 2);
+            add_action('emailit_complaint_processed', array($this, 'handle_complaint_event'), 10, 2);
+            add_action('emailit_unsubscribe_processed', array($this, 'handle_unsubscribe_event'), 10, 2);
+            
+            $this->logger->log('FluentCRM integration initialized successfully', Emailit_Logger::LEVEL_INFO, array(
+                'version' => $this->get_fluentcrm_version()
+            ));
+            
+        } catch (Exception $e) {
+            $this->logger->log('FluentCRM integration initialization failed', Emailit_Logger::LEVEL_ERROR, array(
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ));
+            
+            // Disable FluentCRM integration
+            $this->is_fluentcrm_available = false;
+        }
+    }
+
+    /**
+     * Test FluentCRM integration health
+     */
+    private function test_fluentcrm_integration() {
+        // Test basic FluentCRM functionality
+        if (!class_exists('FluentCrm\App\Models\Subscriber')) {
+            throw new Exception('FluentCRM Subscriber class not available');
+        }
+
+        // Test database connectivity
+        try {
+            $subscriber_count = FluentCrm\App\Models\Subscriber::count();
+            if ($subscriber_count === false) {
+                throw new Exception('FluentCRM database connection failed');
+            }
+        } catch (Exception $e) {
+            throw new Exception('FluentCRM database test failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get FluentCRM integration status
+     */
+    public function get_integration_status() {
+        return array(
+            'available' => $this->is_fluentcrm_available,
+            'version' => $this->get_fluentcrm_version(),
+            'health_check' => $this->is_fluentcrm_available ? $this->test_fluentcrm_health() : false
+        );
+    }
+
+    /**
+     * Test FluentCRM health without throwing exceptions
+     */
+    private function test_fluentcrm_health() {
+        try {
+            $this->test_fluentcrm_integration();
+            return true;
+        } catch (Exception $e) {
+            return false;
+        }
     }
 
     /**
@@ -543,18 +687,6 @@ class Emailit_FluentCRM_Handler {
         }
     }
 
-    /**
-     * Get FluentCRM integration status
-     */
-    public function get_integration_status() {
-        return array(
-            'available' => $this->is_fluentcrm_available,
-            'subscriber_count' => $this->is_fluentcrm_available ? $this->get_subscriber_count() : 0,
-            'bounce_actions_today' => $this->get_bounce_actions_count('today'),
-            'bounce_actions_week' => $this->get_bounce_actions_count('week'),
-            'soft_bounce_stats' => $this->get_soft_bounce_statistics()
-        );
-    }
 
     /**
      * Get soft bounce statistics

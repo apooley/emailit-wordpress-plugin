@@ -59,51 +59,103 @@ class Emailit_Queue {
         // Register cron schedules
         add_filter('cron_schedules', array($this, 'add_cron_schedules'));
 
-        // Initialize cron jobs
+        // Initialize cron jobs with unique schedules
         if (!wp_next_scheduled('emailit_process_queue')) {
-            wp_schedule_event(time(), 'every_minute', 'emailit_process_queue');
+            wp_schedule_event(time(), 'emailit_every_minute', 'emailit_process_queue');
         }
 
         if (!wp_next_scheduled('emailit_cleanup_queue')) {
-            wp_schedule_event(time(), 'hourly', 'emailit_cleanup_queue');
+            wp_schedule_event(time(), 'emailit_every_15_minutes', 'emailit_cleanup_queue');
         }
+
+        // Clean up old schedules and check for conflicts
+        $this->cleanup_old_schedules();
     }
 
     /**
      * Add custom cron schedules
      */
     public function add_cron_schedules($schedules) {
-        $schedules['every_minute'] = array(
+        // Use unique prefix to avoid conflicts with other plugins
+        $schedules['emailit_every_minute'] = array(
             'interval' => 60,
-            'display'  => __('Every Minute', 'emailit-integration')
+            'display'  => __('Emailit: Every Minute', 'emailit-integration')
+        );
+
+        $schedules['emailit_every_5_minutes'] = array(
+            'interval' => 300,
+            'display'  => __('Emailit: Every 5 Minutes', 'emailit-integration')
+        );
+
+        $schedules['emailit_every_15_minutes'] = array(
+            'interval' => 900,
+            'display'  => __('Emailit: Every 15 Minutes', 'emailit-integration')
         );
 
         return $schedules;
     }
 
     /**
+     * Clean up old cron schedules and check for conflicts
+     */
+    public function cleanup_old_schedules() {
+        // Remove old schedule names that might conflict
+        $old_schedules = array('every_minute');
+        
+        foreach ($old_schedules as $old_schedule) {
+            // Check if any other plugins are using this schedule
+            $cron_jobs = _get_cron_array();
+            $conflict_found = false;
+            
+            foreach ($cron_jobs as $timestamp => $cron) {
+                foreach ($cron as $hook => $events) {
+                    foreach ($events as $key => $event) {
+                        if (isset($event['schedule']) && $event['schedule'] === $old_schedule) {
+                            // Check if this is not our job
+                            if (strpos($hook, 'emailit_') !== 0) {
+                                $conflict_found = true;
+                                break 3;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if ($conflict_found) {
+                error_log("[Emailit] Cron schedule conflict detected with '$old_schedule'. Using unique prefix.");
+            }
+        }
+    }
+
+    /**
      * Create queue table
      */
     public function create_table() {
-        global $wpdb;
+        $wpdb = $GLOBALS['wpdb'];
 
+        // Enhanced charset and collation for better internationalization
         $charset_collate = $wpdb->get_charset_collate();
+        if (empty($charset_collate)) {
+            $charset_collate = 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+        }
 
         $sql = "CREATE TABLE {$this->queue_table} (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             priority int(11) DEFAULT 10,
-            email_data longtext NOT NULL,
-            status varchar(20) DEFAULT 'pending',
+            email_data longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            status varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
             attempts int(11) DEFAULT 0,
-            last_error text DEFAULT NULL,
+            last_error text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
             scheduled_at datetime DEFAULT CURRENT_TIMESTAMP,
             processed_at datetime DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY idx_status_priority (status, priority),
             KEY idx_scheduled_at (scheduled_at),
-            KEY idx_attempts (attempts)
-        ) $charset_collate;";
+            KEY idx_attempts (attempts),
+            KEY idx_status_scheduled (status, scheduled_at),
+            KEY idx_created_at (created_at)
+        ) $charset_collate ENGINE=InnoDB;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $result = dbDelta($sql);
@@ -745,10 +797,13 @@ class Emailit_Queue {
         $where_clause = "id IN ($placeholders)";
         $values = $queue_ids;
 
-        // Add status filter if provided
+        // Add status filter if provided - validate against allowed values
         if (!empty($status_filter)) {
-            $where_clause .= " AND status = %s";
-            $values[] = $status_filter;
+            $allowed_statuses = array('pending', 'processing', 'completed', 'failed');
+            if (in_array($status_filter, $allowed_statuses)) {
+                $where_clause .= " AND status = %s";
+                $values[] = $status_filter;
+            }
         }
 
         // Get items to be deleted for logging

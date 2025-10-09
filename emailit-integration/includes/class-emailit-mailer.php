@@ -219,8 +219,14 @@ class Emailit_Mailer {
             $status = $webhooks_enabled ? Emailit_Logger::STATUS_SENT : Emailit_Logger::STATUS_SENT_TO_API;
         }
 
+        // Extract response time from API response if available
+        $response_time = null;
+        if (is_array($api_response) && isset($api_response['response_time'])) {
+            $response_time = $api_response['response_time'];
+        }
+
         // Log the email
-        $log_id = $this->logger->log_email($email_data, $api_response, $status);
+        $log_id = $this->logger->log_email($email_data, $api_response, $status, $response_time);
 
         // Trigger after send action
         do_action('emailit_after_send', $email_data, $api_response, $log_id);
@@ -390,8 +396,22 @@ class Emailit_Mailer {
      * Sanitize header name to prevent injection
      */
     private function sanitize_header_name($name) {
+        // Check for header injection attempts first
+        if ($this->detect_header_injection($name)) {
+            $this->logger->log('Header injection attempt in header name', Emailit_Logger::LEVEL_WARNING, array(
+                'header_name' => substr($name, 0, 50) . '...',
+                'ip' => $this->get_client_ip()
+            ));
+            return '';
+        }
+
         // Remove any characters that aren't allowed in header names
         $name = preg_replace('/[^\x21-\x39\x3B-\x7E]/', '', $name);
+
+        // Check length (RFC 5322 limit)
+        if (strlen($name) > 78) {
+            return '';
+        }
 
         // Validate against common header names
         $allowed_headers = array(
@@ -407,27 +427,83 @@ class Emailit_Mailer {
      * Sanitize header value to prevent injection attacks
      */
     private function sanitize_header_value($value) {
-        // Remove or replace dangerous characters
-        // \r and \n can be used for header injection
-        if (preg_match('/[\r\n]/', $value)) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                $this->logger->log('Header injection attempt detected', Emailit_Logger::LEVEL_WARNING, array(
-                    'value' => $value,
-                    'ip' => $this->get_client_ip()
-                ));
-            }
+        // Check for header injection attempts first
+        if ($this->detect_header_injection($value)) {
+            $this->logger->log('Header injection attempt detected in value', Emailit_Logger::LEVEL_WARNING, array(
+                'value' => substr($value, 0, 100) . '...',
+                'ip' => $this->get_client_ip()
+            ));
             return false; // Reject the entire header
         }
 
         // Remove null bytes and other control characters except tab
         $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
 
-        // Limit length to prevent abuse
-        if (strlen($value) > 1000) {
-            $value = substr($value, 0, 1000);
+        // Decode URL-encoded CRLF
+        $value = str_replace(array('%0d%0a', '%0a%0d', '%0d', '%0a'), ' ', $value);
+
+        // Limit length to prevent abuse (RFC 5322 limit is 998)
+        if (strlen($value) > 998) {
+            $value = substr($value, 0, 998);
         }
 
         return $value;
+    }
+
+    /**
+     * Detect header injection attempts
+     */
+    private function detect_header_injection($header) {
+        // Check for null bytes
+        if (strpos($header, "\0") !== false) {
+            return true;
+        }
+        
+        // Check for CRLF injection
+        if (preg_match('/[\r\n]/', $header)) {
+            return true;
+        }
+        
+        // Check for URL-encoded CRLF
+        if (preg_match('/%0d%0a|%0a%0d|%0d|%0a/i', $header)) {
+            return true;
+        }
+        
+        // Check for suspicious patterns
+        $suspicious_patterns = array(
+            '/^[\r\n]/',  // Starts with newline
+            '/[\r\n]$/',  // Ends with newline
+            '/[\r\n]{2,}/', // Multiple consecutive newlines
+            '/\b(cc|bcc|to|from|subject)\s*:/i', // Header injection keywords
+        );
+        
+        foreach ($suspicious_patterns as $pattern) {
+            if (preg_match($pattern, $header)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Get client IP address
+     */
+    private function get_client_ip() {
+        $ip_keys = array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR');
+        
+        foreach ($ip_keys as $key) {
+            if (array_key_exists($key, $_SERVER) === true) {
+                foreach (explode(',', $_SERVER[$key]) as $ip) {
+                    $ip = trim($ip);
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                        return $ip;
+                    }
+                }
+            }
+        }
+        
+        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
     }
 
     /**
@@ -921,46 +997,6 @@ class Emailit_Mailer {
         return $this->queue;
     }
 
-    /**
-     * Get client IP address securely
-     */
-    private function get_client_ip() {
-        try {
-            $headers = array(
-                'HTTP_X_FORWARDED_FOR',
-                'HTTP_X_REAL_IP',
-                'HTTP_CF_CONNECTING_IP',
-                'REMOTE_ADDR'
-            );
-
-            foreach ($headers as $header) {
-                if (!empty($_SERVER[$header])) {
-                    $ip = trim($_SERVER[$header]);
-
-                    // Handle comma-separated IPs (take first one)
-                    if (strpos($ip, ',') !== false) {
-                        $ip = trim(explode(',', $ip)[0]);
-                    }
-
-                    // Validate and ensure it's a real IP (not private/reserved)
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                        return $ip;
-                    }
-                }
-            }
-
-            // Fallback - but validate it too
-            $fallback = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-            return filter_var($fallback, FILTER_VALIDATE_IP) ? $fallback : '127.0.0.1';
-
-        } catch (Exception $e) {
-            // If anything goes wrong, return safe default
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit] Error in get_client_ip: ' . $e->getMessage());
-            }
-            return '127.0.0.1';
-        }
-    }
 
     /**
      * Check if queue is enabled

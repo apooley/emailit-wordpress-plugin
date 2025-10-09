@@ -296,14 +296,31 @@ class Emailit_Error_Handler {
         $breaker_data = get_transient($this->circuit_breaker_key) ?: array(
             'failures' => 0,
             'last_failure' => 0,
-            'status' => 'closed' // closed, open, half-open
+            'status' => 'closed', // closed, open, half-open
+            'half_open_attempts' => 0,
+            'half_open_successes' => 0
         );
 
         if ($level === 'critical' || $level === 'error') {
             $breaker_data['failures']++;
             $breaker_data['last_failure'] = time();
 
-            if ($breaker_data['failures'] >= $this->failure_threshold) {
+            // Handle half-open state failures
+            if ($breaker_data['status'] === 'half-open') {
+                $breaker_data['half_open_attempts']++;
+                
+                // If too many failures in half-open state, go back to open
+                if ($breaker_data['half_open_attempts'] >= 3) {
+                    $breaker_data['status'] = 'open';
+                    $breaker_data['last_failure'] = time();
+                    update_option('emailit_circuit_breaker_active', true);
+                    
+                    $this->log_error('circuit_breaker_reopened',
+                        'Circuit breaker reopened due to failures in half-open state',
+                        'critical'
+                    );
+                }
+            } elseif ($breaker_data['failures'] >= $this->failure_threshold) {
                 $breaker_data['status'] = 'open';
 
                 // Disable API temporarily
@@ -315,11 +332,27 @@ class Emailit_Error_Handler {
                 );
             }
         } else {
-            // Success or recoverable error - reset counter
+            // Success or recoverable error
             if ($breaker_data['status'] === 'half-open') {
-                $breaker_data['status'] = 'closed';
-                $breaker_data['failures'] = 0;
-                delete_option('emailit_circuit_breaker_active');
+                $breaker_data['half_open_attempts']++;
+                $breaker_data['half_open_successes']++;
+                
+                // If we have enough successes in half-open state, close the circuit
+                if ($breaker_data['half_open_successes'] >= 2) {
+                    $breaker_data['status'] = 'closed';
+                    $breaker_data['failures'] = 0;
+                    $breaker_data['half_open_attempts'] = 0;
+                    $breaker_data['half_open_successes'] = 0;
+                    delete_option('emailit_circuit_breaker_active');
+                    
+                    $this->log_error('circuit_breaker_closed',
+                        'Circuit breaker closed after successful recovery in half-open state',
+                        'info'
+                    );
+                }
+            } else {
+                // Reset failure counter on success
+                $breaker_data['failures'] = max(0, $breaker_data['failures'] - 1);
             }
         }
 
@@ -332,18 +365,51 @@ class Emailit_Error_Handler {
     public function is_circuit_breaker_open() {
         $breaker_data = get_transient($this->circuit_breaker_key);
 
-        if (!$breaker_data || $breaker_data['status'] !== 'open') {
+        if (!$breaker_data) {
             return false;
         }
 
-        // Check if timeout period has passed
-        if (time() - $breaker_data['last_failure'] > $this->circuit_timeout) {
-            $breaker_data['status'] = 'half-open';
-            set_transient($this->circuit_breaker_key, $breaker_data, $this->circuit_timeout);
-            return false;
+        // Handle different circuit breaker states
+        switch ($breaker_data['status']) {
+            case 'closed':
+                return false;
+                
+            case 'open':
+                // Check if timeout period has passed for auto-recovery
+                if (time() - $breaker_data['last_failure'] > $this->circuit_timeout) {
+                    $breaker_data['status'] = 'half-open';
+                    $breaker_data['half_open_attempts'] = 0;
+                    $breaker_data['half_open_successes'] = 0;
+                    set_transient($this->circuit_breaker_key, $breaker_data, $this->circuit_timeout);
+                    
+                    $this->log_error('circuit_breaker_half_open', 
+                        'Circuit breaker moved to half-open state for gradual recovery', 
+                        'info'
+                    );
+                    return false; // Allow limited requests in half-open state
+                }
+                return true;
+                
+            case 'half-open':
+                // In half-open state, allow limited requests for testing
+                $max_half_open_attempts = 3;
+                if ($breaker_data['half_open_attempts'] >= $max_half_open_attempts) {
+                    // Too many attempts in half-open state, go back to open
+                    $breaker_data['status'] = 'open';
+                    $breaker_data['last_failure'] = time();
+                    set_transient($this->circuit_breaker_key, $breaker_data, $this->circuit_timeout);
+                    
+                    $this->log_error('circuit_breaker_reopened', 
+                        'Circuit breaker reopened due to continued failures in half-open state', 
+                        'critical'
+                    );
+                    return true;
+                }
+                return false; // Allow limited requests
+                
+            default:
+                return false;
         }
-
-        return true;
     }
 
     /**

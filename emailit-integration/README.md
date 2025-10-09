@@ -430,6 +430,24 @@ $stats = emailit_get_queue_stats();
 
 ---
 
+## 📚 **User Documentation**
+
+For comprehensive user guides, installation instructions, and troubleshooting help:
+
+**👉 [View User Documentation](./docs/index.md)**
+
+The documentation includes:
+- [Getting Started Guide](./docs/getting-started.md) - Installation and initial setup
+- [Configuration Guide](./docs/configuration.md) - Complete settings reference
+- [User Guide](./docs/user-guide.md) - Daily usage and features
+- [FluentCRM Integration](./docs/fluentcrm-integration.md) - CRM setup and configuration
+- [Troubleshooting Guide](./docs/troubleshooting.md) - Common issues and solutions
+- [FAQ](./docs/faq.md) - Frequently asked questions
+- [Best Practices](./docs/best-practices.md) - Optimization tips and recommendations
+- [Glossary](./docs/glossary.md) - Key terms and definitions
+
+---
+
 ## 📄 **License**
 
 This plugin is licensed under the GPL v2 or later. See the [LICENSE](LICENSE) file for details.

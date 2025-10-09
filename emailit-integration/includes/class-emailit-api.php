@@ -33,14 +33,18 @@ class Emailit_API {
     private $api_key;
 
     /**
-     * Static cache for API key to prevent multiple retrievals
+     * API key cache removed for security - using short-lived transients only
      */
-    private static $cached_api_key = null;
 
     /**
      * Request timeout
      */
     private $timeout;
+
+    /**
+     * Request start time for response time calculation
+     */
+    private $request_start_time;
 
     /**
      * Retry attempts
@@ -68,11 +72,17 @@ class Emailit_API {
      * Send email via Emailit API
      */
     public function send_email($email_data) {
+        // Start timing
+        $start_time = microtime(true);
+        
         // Check circuit breaker
         if ($this->error_handler->is_circuit_breaker_open()) {
             $message = apply_filters('emailit_error_message', __('Emailit API temporarily disabled due to repeated failures.', 'emailit-integration'), 'circuit_breaker_open', array());
             return new WP_Error('circuit_breaker_open', $message);
         }
+        
+        // Track half-open state attempts
+        $this->track_circuit_breaker_attempt();
 
         // Check if API is temporarily disabled
         $disabled_until = get_option('emailit_api_disabled_until', 0);
@@ -109,8 +119,11 @@ class Emailit_API {
         // Send with retry logic
         $response = $this->send_with_retry($request_data);
 
-        // Log the response
-        $this->log_api_response($request_data, $response, $email_data);
+        // Calculate response time
+        $response_time = microtime(true) - $start_time;
+
+        // Log the response with timing
+        $this->log_api_response($request_data, $response, $email_data, $response_time);
 
         return $response;
     }
@@ -239,6 +252,9 @@ class Emailit_API {
      * Make actual API request
      */
     private function make_api_request($request_data) {
+        // Set request start time for response time calculation
+        $this->request_start_time = microtime(true);
+        
         $args = array(
             'method' => 'POST',
             'timeout' => $this->timeout,
@@ -286,7 +302,8 @@ class Emailit_API {
             return array(
                 'success' => true,
                 'data' => $parsed_response,
-                'response_code' => $response_code
+                'response_code' => $response_code,
+                'response_time' => microtime(true) - $this->request_start_time
             );
         } else {
             // Error
@@ -473,10 +490,61 @@ class Emailit_API {
             return false;
         }
 
-        // Additional check for double extensions (file.txt.php)
-        if (preg_match('/\.(php|exe|bat|com|cmd|scr|vbs|js)(\.|$)/i', $file_name)) {
+        // Enhanced check for double extensions and nested patterns
+        $suspicious_patterns = array(
+            '/\.(php|phtml|php3|php4|php5|php7|phps|pht|phtm)\.(txt|jpg|png|gif|pdf)$/i',
+            '/\.(js|vbs)\.(txt|pdf)$/i',
+            '/\.(exe|bat|cmd|com|scr)\.(txt|pdf)$/i',
+            '/\.(php|exe|bat|com|cmd|scr|vbs|js)(\.|$)/i'
+        );
+        
+        foreach ($suspicious_patterns as $pattern) {
+            if (preg_match($pattern, $file_name)) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] Blocked file with suspicious pattern: ' . $file_name);
+                }
+                return false;
+            }
+        }
+
+        // Check for symlinks (security risk)
+        if (is_link($real_path)) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[Emailit] Blocked file with suspicious double extension: ' . $file_name);
+                error_log('[Emailit] Blocked symlink: ' . $real_path);
+            }
+            return false;
+        }
+
+        // Content scanning for PHP tags in text files
+        if (in_array($file_extension, array('txt', 'html', 'htm'))) {
+            $file_content = file_get_contents($real_path, false, null, 0, 1024); // Read first 1KB
+            if ($file_content !== false) {
+                $php_patterns = array(
+                    '/<\?php/i',
+                    '/<\?=/i',
+                    '/<\?/i',
+                    '/<script[^>]*language\s*=\s*["\']?php["\']?/i',
+                    '/<script[^>]*type\s*=\s*["\']?application\/x-httpd-php["\']?/i'
+                );
+                
+                foreach ($php_patterns as $pattern) {
+                    if (preg_match($pattern, $file_content)) {
+                        if (defined('WP_DEBUG') && WP_DEBUG) {
+                            error_log('[Emailit] Blocked file containing PHP code: ' . $file_name);
+                        }
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // File hash tracking for suspicious files
+        $file_hash = hash_file('sha256', $real_path);
+        $suspicious_hashes = get_option('emailit_suspicious_file_hashes', array());
+        
+        if (in_array($file_hash, $suspicious_hashes)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[Emailit] Blocked known malicious file: ' . $file_name);
             }
             return false;
         }
@@ -541,23 +609,11 @@ class Emailit_API {
      * Get encrypted API key
      */
     public function get_api_key() {
-        // Return static cached key if available (prevents multiple retrievals across instances)
-        if (self::$cached_api_key !== null) {
-            $this->api_key = self::$cached_api_key;
-            return $this->api_key;
-        }
-
-        // Return instance cached key if available
-        if ($this->api_key !== null) {
-            return $this->api_key;
-        }
-
-        // Check WordPress transient cache (persists across requests)
-        $transient_key = 'emailit_api_key_cache';
+        // Check WordPress transient cache (30 seconds only for security)
+        $transient_key = 'emailit_api_key_cache_' . get_current_user_id();
         $cached_key = get_transient($transient_key);
         if ($cached_key !== false) {
             $this->api_key = $cached_key;
-            self::$cached_api_key = $cached_key;
             return $cached_key;
         }
 
@@ -591,23 +647,35 @@ class Emailit_API {
             }
 
             $this->api_key = $decrypted;
-            self::$cached_api_key = $decrypted; // Cache in static variable to prevent multiple retrievals
-            set_transient('emailit_api_key_cache', $decrypted, 300); // Cache for 5 minutes
+            set_transient($transient_key, $decrypted, 30); // Cache for 30 seconds only
             return $decrypted;
         }
 
         $this->api_key = $key;
-        self::$cached_api_key = $key; // Cache in static variable to prevent multiple retrievals
-        set_transient('emailit_api_key_cache', $key, 300); // Cache for 5 minutes
+        set_transient($transient_key, $key, 30); // Cache for 30 seconds only
         return $key;
+    }
+
+    /**
+     * Track circuit breaker attempt for half-open state
+     */
+    private function track_circuit_breaker_attempt() {
+        $breaker_data = get_transient('emailit_circuit_breaker');
+        
+        if ($breaker_data && $breaker_data['status'] === 'half-open') {
+            $breaker_data['half_open_attempts'] = ($breaker_data['half_open_attempts'] ?? 0) + 1;
+            set_transient('emailit_circuit_breaker', $breaker_data, 300); // 5 minutes
+        }
     }
 
     /**
      * Clear the static API key cache (useful when API key is updated)
      */
     public static function clear_api_key_cache() {
-        self::$cached_api_key = null;
-        delete_transient('emailit_api_key_cache');
+        // Clear all user-specific API key caches
+        global $wpdb;
+        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_emailit_api_key_cache_%'));
+        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_timeout_emailit_api_key_cache_%'));
     }
 
     /**
@@ -643,7 +711,6 @@ class Emailit_API {
         $result = update_option('emailit_api_key', $encrypted_key);
         
         $this->api_key = $api_key;
-        self::$cached_api_key = $api_key; // Update static cache with new key
         
         return $result;
     }
@@ -853,8 +920,7 @@ class Emailit_API {
         // Clear cached API key
         $this->api_key = null;
         
-        // Clear static cache
-        self::$cached_api_key = null;
+        // Clear API key cache
         
         // Clear transient cache
         delete_transient('emailit_api_key_cache');
@@ -874,7 +940,7 @@ class Emailit_API {
     /**
      * Log API response
      */
-    private function log_api_response($request_data, $response, $original_email_data) {
+    private function log_api_response($request_data, $response, $original_email_data, $response_time = null) {
         if (!$this->logger) {
             return;
         }
