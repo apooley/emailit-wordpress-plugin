@@ -428,3 +428,4 @@ class Emailit_Memory_Manager {
         return $recommendations;
     }
 }
+

@@ -158,6 +158,9 @@ class Emailit_Integration {
             
             // Add admin notice about Breakdance compatibility
             add_action('admin_notices', array($this, 'breakdance_compatibility_notice'));
+            
+            // Add AJAX handler for dismissing Breakdance notice
+            add_action('wp_ajax_emailit_dismiss_breakdance_notice', array($this, 'dismiss_breakdance_notice'));
         }
     }
 
@@ -190,13 +193,25 @@ class Emailit_Integration {
 
     /**
      * Breakdance compatibility notice
+     * Note: This notice is now handled in the settings template for better positioning
      */
     public function breakdance_compatibility_notice() {
-        if (current_user_can('manage_options')) {
-            echo '<div class="notice notice-info"><p>';
-            printf(__('Emailit is running with Breakdance compatibility mode enabled. If you experience any issues, please contact support.', 'emailit-integration'));
-            echo '</p></div>';
+        // Notice moved to settings template - this method kept for backward compatibility
+        return;
+    }
+
+    /**
+     * Dismiss Breakdance compatibility notice
+     */
+    public function dismiss_breakdance_notice() {
+        check_ajax_referer('emailit_dismiss_breakdance_notice', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
         }
+        
+        update_user_meta(get_current_user_id(), 'emailit_dismissed_breakdance_notice', true);
+        wp_send_json_success();
     }
 
     private function is_compatible() {

@@ -29,6 +29,66 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
         </div>
     </div>
 
+    <?php
+    // Check if we have any notices to show
+    $has_breakdance_notice = current_user_can('manage_options') && 
+        !get_user_meta(get_current_user_id(), 'emailit_dismissed_breakdance_notice', true) &&
+        class_exists('Breakdance\Plugin');
+    
+    $has_power_user_notice = !$admin->is_power_user_mode() && 
+        !get_user_meta(get_current_user_id(), 'emailit_dismissed_power_user_notice', true) &&
+        $current_tab === 'advanced';
+    
+    // Only render the notices section if we have notices to show
+    if ($has_breakdance_notice || $has_power_user_notice): ?>
+    <!-- Admin Notices Section -->
+    <div class="emailit-notices-section" style="margin: 15px 0 0 0; background: #f8f9fa; border-radius: 4px; padding: 10px; border-left: 4px solid #0073aa;">
+        <?php
+        // Breakdance compatibility notice
+        if ($has_breakdance_notice) {
+            ?>
+            <div class="notice notice-info is-dismissible" id="emailit-breakdance-notice" style="margin: 0 0 8px 0; font-size: 13px; padding: 6px 10px; background: rgba(0, 115, 170, 0.1); border: 1px solid rgba(0, 115, 170, 0.2);">
+                <p style="margin: 0;">
+                    <span class="dashicons dashicons-info" style="color: #0073aa; margin-right: 5px; font-size: 16px;"></span>
+                    <?php printf(__('Breakdance compatibility mode is active. <a href="%s" target="_blank">Contact support</a> if you experience issues.', 'emailit-integration'), 'mailto:support@emailit.com'); ?>
+                </p>
+            </div>
+            
+            <script>
+            jQuery(document).on("click", "#emailit-breakdance-notice .notice-dismiss", function() {
+                jQuery.post(ajaxurl, {
+                    action: "emailit_dismiss_breakdance_notice",
+                    nonce: "<?php echo wp_create_nonce('emailit_dismiss_breakdance_notice'); ?>"
+                });
+            });
+            </script>
+            <?php
+        }
+
+        // Power User Mode notice (only on Advanced tab)
+        if ($has_power_user_notice) {
+            ?>
+            <div class="notice notice-info is-dismissible" id="emailit-power-user-notice" style="margin: 0; font-size: 13px; padding: 6px 10px; background: rgba(0, 115, 170, 0.1); border: 1px solid rgba(0, 115, 170, 0.2);">
+                <p style="margin: 0;">
+                    <span class="dashicons dashicons-info" style="color: #0073aa; margin-right: 5px; font-size: 16px;"></span>
+                    <?php _e('Enable Power User Mode in the header to access advanced features and detailed configuration options.', 'emailit-integration'); ?>
+                </p>
+            </div>
+            
+            <script>
+            jQuery(document).on("click", "#emailit-power-user-notice .notice-dismiss", function() {
+                jQuery.post(ajaxurl, {
+                    action: "emailit_dismiss_power_user_notice",
+                    nonce: "<?php echo wp_create_nonce('emailit_dismiss_power_user_notice'); ?>"
+                });
+            });
+            </script>
+            <?php
+        }
+        ?>
+    </div>
+    <?php endif; ?>
+
     <!-- Navigation Tabs -->
     <nav class="nav-tab-wrapper emailit-tab-nav">
         <a href="#general" data-tab="general"
@@ -430,16 +490,6 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 <h2><?php _e('Advanced Settings', 'emailit-integration'); ?></h2>
                 <p class="description"><?php _e('Advanced configuration options for power users. These settings are optional and can be left at their defaults for most users.', 'emailit-integration'); ?></p>
                 
-                <?php if (!$admin->is_power_user_mode()): ?>
-                <div class="emailit-mode-notice basic-user-mode">
-                    <div class="notice notice-info">
-                        <p>
-                            <span class="dashicons dashicons-info"></span>
-                            <?php _e('Enable Power User Mode in the header to access advanced features and detailed configuration options.', 'emailit-integration'); ?>
-                        </p>
-                    </div>
-                </div>
-                <?php endif; ?>
             </div>
 
             <!-- Form for Advanced settings -->

@@ -132,6 +132,7 @@ class Emailit_Admin {
         add_action('wp_ajax_emailit_get_recent_logs', array($this, 'ajax_get_recent_logs'));
         add_action('wp_ajax_emailit_get_health_status', array($this, 'ajax_get_health_status'));
         add_action('wp_ajax_emailit_toggle_power_user_mode', array($this, 'ajax_toggle_power_user_mode'));
+        add_action('wp_ajax_emailit_dismiss_power_user_notice', array($this, 'ajax_dismiss_power_user_notice'));
         add_action('wp_ajax_emailit_clear_api_cache', array($this, 'ajax_clear_api_cache'));
         add_action('wp_ajax_emailit_clear_api_key', array($this, 'ajax_clear_api_key'));
 
@@ -2158,22 +2159,29 @@ class Emailit_Admin {
      * Admin notices
      */
     public function admin_notices() {
+        // Only show notices on Emailit pages to reduce clutter
+        if (!$this->is_emailit_page()) {
+            return;
+        }
+
         // Check if API key is configured
         $api_key = get_option('emailit_api_key', '');
-        if (empty($api_key) && $this->is_emailit_page()) {
+        if (empty($api_key)) {
             echo '<div class="notice notice-warning is-dismissible">';
             echo '<p>' . sprintf(
                 __('Emailit Integration is not configured. Please <a href="%s">enter your API key</a> to start sending emails.', 'emailit-integration'),
                 admin_url('options-general.php?page=' . $this->settings_page)
             ) . '</p>';
             echo '</div>';
+            return; // Don't show other notices if no API key
         }
 
-        // Check API key validity
-        if (!empty($api_key)) {
-            // Don't pass the raw encrypted key - let validate_api_key use the instance's decrypted key
-            $validation = $this->api->validate_api_key();
-            if (is_wp_error($validation) && $this->is_emailit_page()) {
+        // Check API key validity - but don't duplicate settings errors
+        $validation = $this->api->validate_api_key();
+        if (is_wp_error($validation)) {
+            // Only show if there are no settings errors already displayed
+            $settings_errors = get_settings_errors('emailit_api_key');
+            if (empty($settings_errors)) {
                 echo '<div class="notice notice-error is-dismissible">';
                 echo '<p>' . sprintf(
                     __('Emailit API key is invalid: %s', 'emailit-integration'),
@@ -3533,6 +3541,20 @@ class Emailit_Admin {
                 __('Power User Mode enabled. Advanced features are now visible.', 'emailit-integration') :
                 __('Power User Mode disabled. Interface simplified for basic users.', 'emailit-integration')
         ));
+    }
+
+    /**
+     * AJAX handler for dismissing power user notice
+     */
+    public function ajax_dismiss_power_user_notice() {
+        check_ajax_referer('emailit_dismiss_power_user_notice', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Insufficient permissions.', 'emailit-integration')));
+        }
+
+        update_user_meta(get_current_user_id(), 'emailit_dismissed_power_user_notice', true);
+        wp_send_json_success();
     }
 
     /**

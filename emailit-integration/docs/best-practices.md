@@ -317,3 +317,4 @@ This guide provides recommendations and tips for getting the most out of Emailit
 ---
 
 **Ready to implement these best practices?** Start with the [Configuration Guide](configuration.md) to set up your plugin optimally, or check the [Troubleshooting Guide](troubleshooting.md) if you encounter any issues.
+

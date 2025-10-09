@@ -322,3 +322,4 @@ class Emailit_Sanitizer {
         return $sanitized;
     }
 }
+

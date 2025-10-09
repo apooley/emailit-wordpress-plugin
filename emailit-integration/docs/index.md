@@ -88,3 +88,4 @@ This documentation is designed for WordPress site administrators who want to imp
 ---
 
 *Ready to get started? Begin with the [Installation Guide](getting-started.md) to set up your Emailit Integration plugin.*
+

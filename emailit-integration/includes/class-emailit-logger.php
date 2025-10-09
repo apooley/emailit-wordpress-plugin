@@ -58,7 +58,7 @@ class Emailit_Logger {
     /**
      * Log email event
      */
-    public function log_email(array $email_data, ?array $api_response = null, ?string $status = null, ?float $response_time = null) {
+    public function log_email(array $email_data, $api_response = null, ?string $status = null, ?float $response_time = null) {
         global $wpdb;
 
         // Skip logging if disabled

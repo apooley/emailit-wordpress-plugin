@@ -272,7 +272,13 @@ class Emailit_Alert_Manager {
     public function display_admin_notices() {
         $notices = get_transient('emailit_admin_notices') ?: array();
         
-        foreach ($notices as $notice_id => $notice) {
+        // Limit to 3 notices maximum to reduce clutter
+        $notices = array_slice($notices, 0, 3, true);
+        
+        // Group similar notices to reduce duplication
+        $grouped_notices = $this->group_similar_notices($notices);
+        
+        foreach ($grouped_notices as $notice_id => $notice) {
             printf(
                 '<div class="notice notice-%s is-dismissible" id="%s">%s</div>',
                 esc_attr($notice['type']),
@@ -282,7 +288,7 @@ class Emailit_Alert_Manager {
         }
         
         // Add JavaScript for dismissing alerts
-        if (!empty($notices)) {
+        if (!empty($grouped_notices)) {
             ?>
             <script>
             function emailitDismissAlert(alertType) {
@@ -299,6 +305,28 @@ class Emailit_Alert_Manager {
             </script>
             <?php
         }
+    }
+
+    /**
+     * Group similar notices to reduce duplication
+     */
+    private function group_similar_notices($notices) {
+        $grouped = array();
+        $seen_types = array();
+        
+        foreach ($notices as $notice_id => $notice) {
+            $alert_type = $notice['data']['type'] ?? 'unknown';
+            
+            // If we've already seen this type, skip it to avoid duplication
+            if (in_array($alert_type, $seen_types)) {
+                continue;
+            }
+            
+            $seen_types[] = $alert_type;
+            $grouped[$notice_id] = $notice;
+        }
+        
+        return $grouped;
     }
 
     /**

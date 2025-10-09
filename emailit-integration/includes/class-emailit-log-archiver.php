@@ -502,3 +502,4 @@ class Emailit_Log_Archiver {
         return $validated_settings;
     }
 }
+

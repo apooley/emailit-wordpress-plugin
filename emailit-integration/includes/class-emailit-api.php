@@ -290,8 +290,9 @@ class Emailit_API {
 
         // Debug logging
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('Emailit API Response Code: ' . $response_code);
-            error_log('Emailit API Response Body: ' . $response_body);
+            error_log('[Emailit] API Response Code: ' . $response_code);
+            error_log('[Emailit] API Response Body: ' . $response_body);
+            error_log('[Emailit] API Request Data: ' . wp_json_encode($request_data));
         }
 
         // Parse JSON response
@@ -890,8 +891,8 @@ class Emailit_API {
         }
 
         // Basic format validation - check if it looks like a valid API key
-        // Emailit API keys typically start with 'em_api_' and are around 39 characters
-        if (strlen($key_to_test) < 20 || !str_starts_with($key_to_test, 'em_api_')) {
+        // Emailit API keys typically start with 'em_' and are around 39 characters
+        if (strlen($key_to_test) < 20 || !str_starts_with($key_to_test, 'em_')) {
             return new WP_Error('invalid_format', __('API key format appears invalid.', 'emailit-integration'));
         }
 
