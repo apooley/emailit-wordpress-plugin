@@ -59,17 +59,20 @@ class Emailit_Mailer {
             return;
         }
 
-        // Use pre_wp_mail filter for WordPress 5.7+ for complete override
-        // Use priority 5 to ensure we hook in before FluentCRM and other plugins
+        // Use phpmailer_init for all versions to intercept MailPoet's WordPressMailer
+        // Priority 1 ensures we hook before MailPoet's mailer replacement
+        add_action('phpmailer_init', array($this, 'phpmailer_init_handler'), 1);
+        
+        // Also use pre_wp_mail filter for WordPress 5.7+ as backup
         if (version_compare(get_bloginfo('version'), '5.7', '>=')) {
-            add_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 5, 2);
-        } else {
-            // Fallback to phpmailer_init for older versions
-            add_action('phpmailer_init', array($this, 'phpmailer_init_handler'));
+            add_filter('pre_wp_mail', array($this, 'pre_wp_mail_handler'), 1, 2);
         }
 
         // Add FluentCRM-specific filters to detect and handle bypass mechanisms
         $this->add_fluentcrm_debug_filters();
+
+        // Hook into MailPoet's mailer replacement to intercept their WordPressMailer
+        add_action('init', array($this, 'intercept_mailpoet_mailer'), 5);
 
         // Note: should_send_via_emailit is used internally, not as a hook
     }
@@ -123,35 +126,73 @@ class Emailit_Mailer {
     }
 
     /**
-     * Handle phpmailer_init action (fallback for older WordPress)
+     * Handle phpmailer_init action (primary method for MailPoet interception)
      */
     public function phpmailer_init_handler(&$phpmailer) {
-        // Store original wp_mail data
-        $email_data = array(
-            'to' => $phpmailer->getToAddresses(),
-            'subject' => $phpmailer->Subject,
-            'message' => $phpmailer->Body,
-            'headers' => $this->extract_headers_from_phpmailer($phpmailer),
-            'attachments' => $this->extract_attachments_from_phpmailer($phpmailer),
-            'content_type' => $phpmailer->isHTML() ? 'text/html' : 'text/plain'
-        );
+        try {
+            // Store original wp_mail data
+            $email_data = array(
+                'to' => $phpmailer->getToAddresses(),
+                'subject' => $phpmailer->Subject,
+                'message' => $phpmailer->Body,
+                'headers' => $this->extract_headers_from_phpmailer($phpmailer),
+                'attachments' => $this->extract_attachments_from_phpmailer($phpmailer),
+                'content_type' => $phpmailer->isHTML() ? 'text/html' : 'text/plain'
+            );
 
-        // Check if we should send via Emailit
-        if (!$this->should_send_via_emailit($email_data, $phpmailer)) {
-            return; // Let WordPress handle normally
-        }
+            // Enhanced MailPoet detection
+            $is_mailpoet_email = $this->is_mailpoet_phpmailer_email($phpmailer);
+            
+            if ($is_mailpoet_email) {
+                $this->logger->log('MailPoet email detected in phpmailer_init', Emailit_Logger::LEVEL_DEBUG, array(
+                    'class' => get_class($phpmailer),
+                    'subject' => $phpmailer->Subject,
+                    'to' => $phpmailer->getToAddresses()
+                ));
+            }
 
-        // Clear PHPMailer settings to prevent normal sending
-        $phpmailer->clearAllRecipients();
-        $phpmailer->clearAttachments();
-        $phpmailer->clearCustomHeaders();
+            // Check if we should send via Emailit
+            if (!$this->should_send_via_emailit($email_data, $phpmailer)) {
+                if ($is_mailpoet_email) {
+                    $this->logger->log('MailPoet email excluded from Emailit processing', Emailit_Logger::LEVEL_DEBUG);
+                }
+                return; // Let WordPress handle normally
+            }
 
-        // Send via Emailit API
-        $result = $this->send_email_data($email_data);
+            // Log that we're intercepting this email
+            $this->logger->log('Intercepting email via phpmailer_init', Emailit_Logger::LEVEL_DEBUG, array(
+                'is_mailpoet' => $is_mailpoet_email,
+                'subject' => $phpmailer->Subject,
+                'to' => $phpmailer->getToAddresses()
+            ));
 
-        // Set result status
-        if (is_wp_error($result)) {
-            $phpmailer->ErrorInfo = $result->get_error_message();
+            // Clear PHPMailer settings to prevent normal sending
+            $phpmailer->clearAllRecipients();
+            $phpmailer->clearAttachments();
+            $phpmailer->clearCustomHeaders();
+
+            // Send via Emailit API
+            $result = $this->send_email_data($email_data);
+
+            // Set result status
+            if (is_wp_error($result)) {
+                $phpmailer->ErrorInfo = $result->get_error_message();
+                $this->logger->log('Emailit send failed in phpmailer_init', Emailit_Logger::LEVEL_ERROR, array(
+                    'error' => $result->get_error_message(),
+                    'subject' => $email_data['subject']
+                ));
+            } else {
+                $this->logger->log('Email successfully sent via Emailit in phpmailer_init', Emailit_Logger::LEVEL_DEBUG, array(
+                    'subject' => $email_data['subject'],
+                    'to' => $email_data['to']
+                ));
+            }
+
+        } catch (Exception $e) {
+            $this->logger->log('Exception in phpmailer_init_handler', Emailit_Logger::LEVEL_ERROR, array(
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ));
         }
     }
 
@@ -695,6 +736,11 @@ class Emailit_Mailer {
             return false;
         }
 
+        // Check MailPoet integration settings
+        if ($this->is_mailpoet_email_excluded($email_data)) {
+            return false;
+        }
+
         // Apply filter to allow other plugins to decide
         $should_send = apply_filters('emailit_should_send', true, $email_data, $phpmailer);
 
@@ -730,6 +776,118 @@ class Emailit_Mailer {
 
         // Allow filtering of excluded emails
         return apply_filters('emailit_is_excluded_email', false, $email_data);
+    }
+
+    /**
+     * Check if MailPoet email should be excluded from Emailit processing
+     */
+    private function is_mailpoet_email_excluded($email_data) {
+        // Only check if MailPoet is available
+        if (!class_exists('MailPoet\Mailer\MailerFactory')) {
+            return false;
+        }
+
+        // Check if MailPoet integration is enabled
+        if (!get_option('emailit_mailpoet_integration', 0)) {
+            return false;
+        }
+
+        // Check if we should override MailPoet's transactional emails
+        $override_transactional = get_option('emailit_mailpoet_override_transactional', 1);
+        
+        if (!$override_transactional) {
+            // If not overriding, exclude MailPoet's internal emails
+            return $this->is_mailpoet_internal_email($email_data);
+        }
+
+        // If overriding transactional emails, allow all emails through Emailit
+        return false;
+    }
+
+    /**
+     * Check if email is from MailPoet's internal system
+     */
+    private function is_mailpoet_internal_email($email_data) {
+        // Check for MailPoet-specific headers or patterns
+        $headers = isset($email_data['headers']) ? $email_data['headers'] : array();
+        
+        if (is_array($headers)) {
+            foreach ($headers as $header) {
+                if (is_string($header)) {
+                    if (strpos($header, 'X-MailPoet') !== false || 
+                        strpos($header, 'mailpoet') !== false) {
+                        return true;
+                    }
+                } elseif (is_array($header) && isset($header[0])) {
+                    if (strpos($header[0], 'X-MailPoet') !== false || 
+                        strpos($header[0], 'mailpoet') !== false) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check for MailPoet-specific subject patterns
+        $subject = isset($email_data['subject']) ? $email_data['subject'] : '';
+        if (strpos($subject, 'MailPoet') !== false || 
+            strpos($subject, 'mailpoet') !== false) {
+            return true;
+        }
+
+        // Check if MailPoet is currently sending emails
+        if (function_exists('did_action') && did_action('mailpoet_sending_emails_starting')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Enhanced MailPoet email detection for phpmailer
+     */
+    private function is_mailpoet_phpmailer_email($phpmailer) {
+        // Check if this is MailPoet's WordPressMailer class
+        if (is_object($phpmailer) && get_class($phpmailer) === 'MailPoet\Mailer\WordPress\WordPressMailer') {
+            return true;
+        }
+
+        // Check for MailPoet-specific headers
+        $headers = $phpmailer->getCustomHeaders();
+        if (is_array($headers)) {
+            foreach ($headers as $header) {
+                if (is_array($header) && isset($header[0])) {
+                    if (strpos($header[0], 'X-MailPoet') !== false || 
+                        strpos($header[0], 'mailpoet') !== false) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check if MailPoet is currently active
+        if (class_exists('MailPoet\Mailer\MailerFactory') && 
+            class_exists('MailPoet\DI\ContainerWrapper')) {
+            // Check if MailPoet's transactional emails are enabled
+            try {
+                $container = \MailPoet\DI\ContainerWrapper::getInstance();
+                if ($container) {
+                    $settings = \MailPoet\Settings\SettingsController::getInstance();
+                    $send_transactional = $settings->get('send_transactional_emails', false);
+                    if ($send_transactional) {
+                        // If MailPoet is handling transactional emails, this could be from MailPoet
+                        return true;
+                    }
+                }
+            } catch (Exception $e) {
+                // If we can't check settings, assume it could be MailPoet
+                return true;
+            } catch (Error $e) {
+                // Handle fatal errors gracefully
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1125,6 +1283,65 @@ class Emailit_Mailer {
 
         if ($this->queue) {
             $this->queue->set_enabled($this->queue_enabled);
+        }
+    }
+
+    /**
+     * Intercept MailPoet's mailer replacement to route emails through Emailit
+     */
+    public function intercept_mailpoet_mailer() {
+        // Only proceed if MailPoet is active and transactional emails are enabled
+        if (!class_exists('MailPoet\Settings\SettingsController') || 
+            !class_exists('MailPoet\DI\ContainerWrapper')) {
+            return;
+        }
+
+        try {
+            $container = \MailPoet\DI\ContainerWrapper::getInstance();
+            if (!$container) {
+                return;
+            }
+
+            $settings = \MailPoet\Settings\SettingsController::getInstance();
+            $send_transactional = $settings->get('send_transactional_emails', false);
+            
+            if (!$send_transactional) {
+                return; // MailPoet transactional emails are disabled
+            }
+
+            // Hook into MailPoet's mailer factory to intercept when it builds mailers
+            add_filter('mailpoet_mailer_factory_build', array($this, 'intercept_mailpoet_factory'), 10, 2);
+            
+            // Also hook into the global $phpmailer replacement
+            add_action('phpmailer_init', array($this, 'intercept_phpmailer_replacement'), 5);
+            
+            $this->logger->log('MailPoet interception hooks registered', Emailit_Logger::LEVEL_DEBUG);
+            
+        } catch (Exception $e) {
+            $this->logger->log('Error setting up MailPoet interception: ' . $e->getMessage(), Emailit_Logger::LEVEL_ERROR);
+        } catch (Error $e) {
+            $this->logger->log('Fatal error setting up MailPoet interception: ' . $e->getMessage(), Emailit_Logger::LEVEL_ERROR);
+        }
+    }
+
+    /**
+     * Intercept MailPoet's mailer factory
+     */
+    public function intercept_mailpoet_factory($mailer, $config) {
+        $this->logger->log('Intercepting MailPoet mailer factory', Emailit_Logger::LEVEL_DEBUG);
+        return $mailer; // For now, just log and return the original mailer
+    }
+
+    /**
+     * Intercept PHPMailer replacement
+     */
+    public function intercept_phpmailer_replacement(&$phpmailer) {
+        if (is_object($phpmailer) && get_class($phpmailer) === 'MailPoet\Mailer\WordPress\WordPressMailer') {
+            $this->logger->log('Intercepting MailPoet WordPressMailer in phpmailer_init', Emailit_Logger::LEVEL_DEBUG);
+            
+            // Store the original mailer and replace with our interceptor
+            $original_mailer = $phpmailer;
+            $phpmailer = new Emailit_MailPoet_Interceptor($original_mailer, $this);
         }
     }
 }

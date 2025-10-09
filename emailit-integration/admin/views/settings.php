@@ -114,6 +114,17 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             <?php _e('FluentCRM', 'emailit-integration'); ?>
         </a>
         <?php endif; ?>
+        
+        <?php
+        // Only show MailPoet tab if MailPoet is installed and active
+        $mailpoet_available = class_exists('MailPoet\Mailer\MailerFactory');
+        if ($mailpoet_available) :
+        ?>
+        <a href="#mailpoet" data-tab="mailpoet"
+           class="nav-tab <?php echo $current_tab === 'mailpoet' ? 'nav-tab-active active' : ''; ?>">
+            <?php _e('MailPoet', 'emailit-integration'); ?>
+        </a>
+        <?php endif; ?>
     </nav>
 
     <!-- General Settings Tab -->
@@ -1255,6 +1266,121 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 </div>
         </div>
     </div>
+
+    <!-- MailPoet Integration Tab -->
+    <?php if ($mailpoet_available) : ?>
+    <div id="mailpoet" class="emailit-tab-pane <?php echo $current_tab === 'mailpoet' ? 'active' : ''; ?>">
+        <h2><?php _e('MailPoet Integration', 'emailit-integration'); ?></h2>
+
+        <div class="emailit-mailpoet-info">
+            <p><?php _e('Configure MailPoet integration for seamless email sending and subscriber management.', 'emailit-integration'); ?></p>
+
+            <div class="emailit-mailpoet-status">
+                <?php
+                $mailpoet_version = 'Unknown';
+                if (function_exists('get_plugin_data')) {
+                    $plugin_file = WP_PLUGIN_DIR . '/mailpoet/mailpoet.php';
+                    if (file_exists($plugin_file)) {
+                        $plugin_data = get_plugin_data($plugin_file);
+                        $mailpoet_version = $plugin_data['Version'] ?? 'Unknown';
+                    }
+                }
+                ?>
+                <div class="notice notice-success inline">
+                    <p><?php printf(__('MailPoet %s detected and compatible.', 'emailit-integration'), $mailpoet_version); ?></p>
+                </div>
+            </div>
+        </div>
+
+        <form method="post" action="options.php">
+            <?php
+            settings_fields('emailit-mailpoet-settings');
+            do_settings_sections('emailit-mailpoet-settings');
+            ?>
+
+            <div class="emailit-mailpoet-settings">
+                <table class="form-table">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><?php _e('Integration Status', 'emailit-integration'); ?></th>
+                            <td>
+                                <?php
+                                $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+                                $bounce_sync = get_option('emailit_mailpoet_sync_bounces', 1);
+                                $transactional_override = get_option('emailit_mailpoet_override_transactional', 1);
+                                
+                                if ($integration_enabled) {
+                                    echo '<div class="notice notice-success inline"><p>';
+                                    printf(
+                                        esc_html__('Integration Active - Bounce Sync: %s, Transactional Override: %s', 'emailit-integration'),
+                                        $bounce_sync ? esc_html__('Enabled', 'emailit-integration') : esc_html__('Disabled', 'emailit-integration'),
+                                        $transactional_override ? esc_html__('Enabled', 'emailit-integration') : esc_html__('Disabled', 'emailit-integration')
+                                    );
+                                    echo '</p></div>';
+                                    
+                                    echo '<div class="notice notice-info inline"><p>';
+                                    esc_html_e('Note: MailPoet does not currently provide a public API for custom sending methods. The integration focuses on bounce synchronization and transactional email handling.', 'emailit-integration');
+                                    echo '</p></div>';
+                                } else {
+                                    echo '<div class="notice notice-info inline"><p>' . esc_html__('Integration is disabled. Enable it below to start using MailPoet features.', 'emailit-integration') . '</p></div>';
+                                }
+                                ?>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3><?php _e('Integration Settings', 'emailit-integration'); ?></h3>
+                <table class="form-table">
+                    <tbody>
+                        <?php
+                        // Render all MailPoet settings fields
+                        $mailpoet_fields = array(
+                            'emailit_mailpoet_integration',
+                            'emailit_mailpoet_override_transactional',
+                            'emailit_mailpoet_sync_bounces',
+                            'emailit_mailpoet_sync_engagement',
+                            'emailit_mailpoet_hard_bounce_action',
+                            'emailit_mailpoet_soft_bounce_threshold',
+                            'emailit_mailpoet_complaint_action'
+                        );
+
+                        foreach ($mailpoet_fields as $field) {
+                            $admin->render_mailpoet_field($field);
+                        }
+                        ?>
+                    </tbody>
+                </table>
+
+                <h3><?php _e('Testing & Diagnostics', 'emailit-integration'); ?></h3>
+                <table class="form-table">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><?php _e('Integration Test', 'emailit-integration'); ?></th>
+                            <td>
+                                <button type="button" id="test-mailpoet-integration" class="button button-secondary">
+                                    <?php _e('Test MailPoet Integration', 'emailit-integration'); ?>
+                                </button>
+                                <p class="description"><?php _e('Test the MailPoet integration to ensure it\'s working correctly.', 'emailit-integration'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Test Bounce Sync', 'emailit-integration'); ?></th>
+                            <td>
+                                <button type="button" id="test-mailpoet-bounce-sync" class="button button-secondary">
+                                    <?php _e('Test Bounce Synchronization', 'emailit-integration'); ?>
+                                </button>
+                                <p class="description"><?php _e('Test the bounce synchronization between Emailit and MailPoet.', 'emailit-integration'); ?></p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php submit_button(__('Save MailPoet Settings', 'emailit-integration')); ?>
+        </form>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script>

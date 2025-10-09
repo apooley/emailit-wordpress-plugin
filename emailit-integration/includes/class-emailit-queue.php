@@ -122,7 +122,11 @@ class Emailit_Queue {
             }
             
             if ($conflict_found) {
-                error_log("[Emailit] Cron schedule conflict detected with '$old_schedule'. Using unique prefix.");
+                if ($this->logger) {
+                    $this->logger->log("Cron schedule conflict detected with '$old_schedule'. Using unique prefix to avoid conflicts.", Emailit_Logger::LEVEL_INFO);
+                } else {
+                    error_log("[Emailit] Cron schedule conflict detected with '$old_schedule'. Using unique prefix to avoid conflicts.");
+                }
             }
         }
     }
@@ -678,7 +682,7 @@ class Emailit_Queue {
         update_option('emailit_enable_queue', (bool) $enabled);
 
         if ($enabled && !wp_next_scheduled('emailit_process_queue')) {
-            wp_schedule_event(time(), 'every_minute', 'emailit_process_queue');
+            wp_schedule_event(time(), 'emailit_every_minute', 'emailit_process_queue');
         } elseif (!$enabled) {
             wp_clear_scheduled_hook('emailit_process_queue');
         }

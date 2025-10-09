@@ -1,31 +1,14 @@
 # Emailit Integration for WordPress
 
-**Version 3.0.4** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
+**Version 0.3.1** - A WordPress plugin that replaces the default `wp_mail()` function with Emailit's API service, featuring an improved user interface with Power User Mode, progressive disclosure, and enterprise-grade email functionality.
 
-## 🐛 **Version 3.0.4 - Priority Conflict Fix**
+## 🐛 **Version 0.3.1 - Priority Conflict Fix**
 - **Fixed Hook Priority Conflict**: Resolved false "High Priority Email Filter" warnings in admin dashboard
 - **Conditional Hook Registration**: Hooks now only register when Emailit is properly configured (API key present)
 - **Improved Conflict Detection**: Enhanced conflict detection logic to exclude Emailit's own functions
 - **Better Performance**: Reduced unnecessary hook processing when plugin isn't configured
 
-## 🐛 **Version 3.0.3 - FluentCRM Integration Fixes**
-- **Fixed FluentCRM Bounce Forwarding**: Bounce events from Emailit are now properly forwarded to FluentCRM subscribers
-- **Improved Email Address Parsing**: Fixed parsing of "Name <email@domain.com>" format emails from FluentCRM
-- **Enhanced FluentCRM Integration**: Added comprehensive bounce type classification (hard/soft/complaint)
-- **Optimized Debug Logging**: Cleaned up excessive debug output while maintaining essential error logging
-- **Better Error Handling**: Streamlined validation and error messages for improved reliability
-
-## 🐛 **Version 3.0.2 - Squished some bugs**
-- **Squished some bugs**: Fixed various issues and improved overall stability
-
-## 🐛 **Version 3.0.1 - Bug Fixes & UI Improvements**
-- **Fixed Header Congestion**: Resolved duplicate webhook alert messages in admin settings header
-- **Improved Layout**: Enhanced message box widths and spacing for better readability
-- **Squashed Various Bugs**: Fixed issues related to admin-ajax calls and health views
-- **Enhanced Responsiveness**: Better mobile layout and responsive design improvements
-- **Webhook Alert Management**: Added proper dismissal functionality and duplicate prevention
-
-## 🎨 **Version 3.0.0 - Major UX Overhaul**
+## 🎨 **Version 0.3.1 - Major UX Overhaul**
 
 ### 🚀 **Interface Improvements**
 
@@ -388,7 +371,7 @@ $stats = emailit_get_queue_stats();
 
 ## 📝 **Changelog**
 
-### **Version 3.0.0 - Major UX Overhaul**
+### **Version 0.3.1 - Major UX Overhaul**
 - **🎨 Power User Mode**: Customizable interface complexity per user
 - **📁 Progressive Disclosure**: Collapsible advanced sections
 - **📊 Simplified Tabs**: Streamlined interface with 3 main sections
@@ -396,18 +379,8 @@ $stats = emailit_get_queue_stats();
 - **❓ Contextual Help**: Smart tooltips and user guidance
 - **🎨 Modern Design**: Professional styling and responsive layout
 - **⚡ Enhanced Performance**: Optimized loading and interactions
-
-### **Version 2.6.4 - Webhook Logs & UI Improvements**
-- **Webhook Logs Integration**: Moved webhook logs to Webhooks tab
-- **Fixed Webhook Display**: Resolved empty fields and improved data extraction
-- **Test Webhook Improvements**: Clear test identification and visual indicators
-- **UI/UX Enhancements**: Removed redundant stats and improved visual hierarchy
-
-### **Version 2.6.0 - Advanced Error Handling System**
-- **Circuit Breaker Protection**: Automatic failure detection and recovery
-- **Intelligent Retry System**: Exponential backoff with jitter
-- **Error Analytics**: Pattern detection and trend analysis
-- **Multi-Channel Notifications**: Email, admin notices, webhooks, and Slack alerts
+- **🔧 FluentCRM Integration**: Complete bounce handling and subscriber management
+- **🐛 Bug Fixes**: Resolved hook conflicts, layout issues, and performance problems
 
 ---
 
@@ -462,4 +435,4 @@ This plugin is licensed under the GPL v2 or later. See the [LICENSE](LICENSE) fi
 
 ---
 
-**Ready to improve your WordPress email experience?** Install Emailit Integration v3.0.0 today and benefit from modern email management with an interface that adapts to your needs!
+**Ready to improve your WordPress email experience?** Install Emailit Integration v0.3.1 today and benefit from modern email management with an interface that adapts to your needs!

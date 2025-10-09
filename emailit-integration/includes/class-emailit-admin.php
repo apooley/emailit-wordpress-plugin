@@ -356,6 +356,55 @@ class Emailit_Admin {
                 'default' => 10
             ));
 
+        // MailPoet Integration Settings
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_integration', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 0
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_register_method', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 0
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_override_transactional', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 1
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_sync_bounces', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 1
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_sync_engagement', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+            'default' => 1
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_hard_bounce_action', array(
+            'type' => 'string',
+            'sanitize_callback' => array($this, 'sanitize_mailpoet_bounce_action'),
+            'default' => 'mark_bounced'
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_soft_bounce_threshold', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 5
+        ));
+
+        register_setting('emailit-mailpoet-settings', 'emailit_mailpoet_complaint_action', array(
+            'type' => 'string',
+            'sanitize_callback' => array($this, 'sanitize_mailpoet_bounce_action'),
+            'default' => 'mark_complained'
+        ));
+
         // Add settings sections
         add_settings_section(
             'emailit_api_section',
@@ -407,6 +456,14 @@ class Emailit_Admin {
             __('FluentCRM Integration', 'emailit-integration'),
             array($this, 'fluentcrm_section_callback'),
             'emailit-fluentcrm-settings'
+        );
+
+        // Always add MailPoet section (separate settings group)
+        add_settings_section(
+            'emailit_mailpoet_section',
+            __('MailPoet Integration', 'emailit-integration'),
+            array($this, 'mailpoet_section_callback'),
+            'emailit-mailpoet-settings'
         );
 
         // Error handling section
@@ -654,6 +711,71 @@ class Emailit_Admin {
                 'emailit-fluentcrm-settings',
                 'emailit_fluentcrm_section'
             );
+
+        // MailPoet Integration Fields
+        add_settings_field(
+            'emailit_mailpoet_integration',
+            __('Enable MailPoet Integration', 'emailit-integration'),
+            array($this, 'mailpoet_integration_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_register_method',
+            __('Register Emailit as MailPoet Sending Method', 'emailit-integration'),
+            array($this, 'mailpoet_register_method_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_override_transactional',
+            __('Override MailPoet Transactional Emails', 'emailit-integration'),
+            array($this, 'mailpoet_override_transactional_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_sync_bounces',
+            __('Sync Bounce Data to MailPoet Subscribers', 'emailit-integration'),
+            array($this, 'mailpoet_sync_bounces_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_sync_engagement',
+            __('Sync Subscriber Engagement', 'emailit-integration'),
+            array($this, 'mailpoet_sync_engagement_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_hard_bounce_action',
+            __('Hard Bounce Action in MailPoet', 'emailit-integration'),
+            array($this, 'mailpoet_hard_bounce_action_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_soft_bounce_threshold',
+            __('Soft Bounce Threshold', 'emailit-integration'),
+            array($this, 'mailpoet_soft_bounce_threshold_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
+
+        add_settings_field(
+            'emailit_mailpoet_complaint_action',
+            __('Complaint Action in MailPoet', 'emailit-integration'),
+            array($this, 'mailpoet_complaint_action_field_callback'),
+            'emailit-mailpoet-settings',
+            'emailit_mailpoet_section'
+        );
 
         // Error handling fields
         add_settings_field(
@@ -1210,6 +1332,168 @@ class Emailit_Admin {
 
         echo '<input type="number" id="emailit_fluentcrm_soft_bounce_history_limit" name="emailit_fluentcrm_soft_bounce_history_limit" value="' . esc_attr($value) . '" min="5" max="50" class="small-text"' . ($fluentcrm_status['available'] ? '' : ' disabled') . ' />';
         echo '<p class="description">' . __('Maximum number of bounce records to keep in history per subscriber (5-50).', 'emailit-integration') . '</p>';
+    }
+
+    /**
+     * MailPoet Integration field callbacks
+     */
+    public function mailpoet_section_callback() {
+        echo '<p>' . __('Configure MailPoet integration settings. These settings control how Emailit interacts with MailPoet.', 'emailit-integration') . '</p>';
+        
+        // Check MailPoet availability
+        $mailpoet_available = class_exists('MailPoet\Mailer\MailerFactory');
+        if (!$mailpoet_available) {
+            echo '<div class="notice notice-warning inline"><p>' . __('MailPoet plugin is not installed or not compatible.', 'emailit-integration') . '</p></div>';
+        } else {
+            $mailpoet_version = $this->get_mailpoet_version();
+            echo '<div class="notice notice-success inline"><p>' . sprintf(__('MailPoet %s detected and compatible.', 'emailit-integration'), $mailpoet_version) . '</p></div>';
+        }
+    }
+
+    public function mailpoet_integration_field_callback() {
+        $value = get_option('emailit_mailpoet_integration', 0);
+        $mailpoet_available = class_exists('MailPoet\Mailer\MailerFactory');
+
+        echo '<input type="hidden" name="emailit_mailpoet_integration" value="0" />';
+        echo '<input type="checkbox" id="emailit_mailpoet_integration" name="emailit_mailpoet_integration" value="1"' . 
+             checked(1, $value, false) . ($mailpoet_available ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_mailpoet_integration">' . __('Enable MailPoet integration features', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Enable integration between Emailit and MailPoet for enhanced email management.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_register_method_field_callback() {
+        $value = get_option('emailit_mailpoet_register_method', 0);
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        echo '<input type="hidden" name="emailit_mailpoet_register_method" value="0" />';
+        echo '<input type="checkbox" id="emailit_mailpoet_register_method" name="emailit_mailpoet_register_method" value="1"' . 
+             checked(1, $value, false) . ($integration_enabled ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_mailpoet_register_method">' . __('Register Emailit as a MailPoet sending method', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Allow MailPoet to use Emailit as a sending method option in its settings.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_override_transactional_field_callback() {
+        $value = get_option('emailit_mailpoet_override_transactional', 1);
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        echo '<input type="hidden" name="emailit_mailpoet_override_transactional" value="0" />';
+        echo '<input type="checkbox" id="emailit_mailpoet_override_transactional" name="emailit_mailpoet_override_transactional" value="1"' . 
+             checked(1, $value, false) . ($integration_enabled ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_mailpoet_override_transactional">' . __('Override MailPoet\'s transactional email handling', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('When enabled, Emailit will handle all WordPress emails including MailPoet\'s transactional emails.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_sync_bounces_field_callback() {
+        $value = get_option('emailit_mailpoet_sync_bounces', 1);
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        echo '<input type="hidden" name="emailit_mailpoet_sync_bounces" value="0" />';
+        echo '<input type="checkbox" id="emailit_mailpoet_sync_bounces" name="emailit_mailpoet_sync_bounces" value="1"' . 
+             checked(1, $value, false) . ($integration_enabled ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_mailpoet_sync_bounces">' . __('Sync bounce data to MailPoet subscribers', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Automatically update MailPoet subscriber status based on bounce events from Emailit.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_sync_engagement_field_callback() {
+        $value = get_option('emailit_mailpoet_sync_engagement', 1);
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        echo '<input type="hidden" name="emailit_mailpoet_sync_engagement" value="0" />';
+        echo '<input type="checkbox" id="emailit_mailpoet_sync_engagement" name="emailit_mailpoet_sync_engagement" value="1"' . 
+             checked(1, $value, false) . ($integration_enabled ? '' : ' disabled') . ' />';
+        echo ' <label for="emailit_mailpoet_sync_engagement">' . __('Sync subscriber engagement data', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('Update MailPoet subscriber engagement data based on Emailit webhook events.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_hard_bounce_action_field_callback() {
+        $value = get_option('emailit_mailpoet_hard_bounce_action', 'mark_bounced');
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        $options = array(
+            'mark_bounced' => __('Mark as Bounced', 'emailit-integration'),
+            'unsubscribe' => __('Unsubscribe', 'emailit-integration'),
+            'track_only' => __('Track Only', 'emailit-integration')
+        );
+
+        echo '<select id="emailit_mailpoet_hard_bounce_action" name="emailit_mailpoet_hard_bounce_action"' . ($integration_enabled ? '' : ' disabled') . '>';
+        foreach ($options as $option_value => $option_label) {
+            echo '<option value="' . esc_attr($option_value) . '"' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Action to take when a hard bounce is detected for a MailPoet subscriber.', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_soft_bounce_threshold_field_callback() {
+        $value = get_option('emailit_mailpoet_soft_bounce_threshold', 5);
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        echo '<input type="number" id="emailit_mailpoet_soft_bounce_threshold" name="emailit_mailpoet_soft_bounce_threshold" value="' . esc_attr($value) . '" min="1" max="20" class="small-text"' . ($integration_enabled ? '' : ' disabled') . ' />';
+        echo '<p class="description">' . __('Number of soft bounces before marking subscriber as bounced (1-20).', 'emailit-integration') . '</p>';
+    }
+
+    public function mailpoet_complaint_action_field_callback() {
+        $value = get_option('emailit_mailpoet_complaint_action', 'mark_complained');
+        $integration_enabled = get_option('emailit_mailpoet_integration', 0);
+
+        $options = array(
+            'mark_complained' => __('Mark as Complained', 'emailit-integration'),
+            'unsubscribe' => __('Unsubscribe', 'emailit-integration'),
+            'track_only' => __('Track Only', 'emailit-integration')
+        );
+
+        echo '<select id="emailit_mailpoet_complaint_action" name="emailit_mailpoet_complaint_action"' . ($integration_enabled ? '' : ' disabled') . '>';
+        foreach ($options as $option_value => $option_label) {
+            echo '<option value="' . esc_attr($option_value) . '"' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Action to take when a complaint is detected for a MailPoet subscriber.', 'emailit-integration') . '</p>';
+    }
+
+    /**
+     * Get MailPoet version
+     */
+    private function get_mailpoet_version() {
+        if (function_exists('get_plugin_data')) {
+            $plugin_file = WP_PLUGIN_DIR . '/mailpoet/mailpoet.php';
+            if (file_exists($plugin_file)) {
+                $plugin_data = get_plugin_data($plugin_file);
+                return $plugin_data['Version'] ?? 'Unknown';
+            }
+        }
+        return 'Unknown';
+    }
+
+    /**
+     * Render MailPoet field for settings page
+     */
+    public function render_mailpoet_field($field_name) {
+        $method_name = $field_name . '_field_callback';
+        if (method_exists($this, $method_name)) {
+            echo '<tr>';
+            echo '<th scope="row">' . $this->get_mailpoet_field_label($field_name) . '</th>';
+            echo '<td>';
+            $this->$method_name();
+            echo '</td>';
+            echo '</tr>';
+        }
+    }
+
+    /**
+     * Get MailPoet field label
+     */
+    private function get_mailpoet_field_label($field_name) {
+        $labels = array(
+            'emailit_mailpoet_integration' => __('Enable MailPoet Integration', 'emailit-integration'),
+            'emailit_mailpoet_register_method' => __('Register Emailit as MailPoet Sending Method', 'emailit-integration'),
+            'emailit_mailpoet_override_transactional' => __('Override MailPoet Transactional Emails', 'emailit-integration'),
+            'emailit_mailpoet_sync_bounces' => __('Sync Bounce Data to MailPoet Subscribers', 'emailit-integration'),
+            'emailit_mailpoet_sync_engagement' => __('Sync Subscriber Engagement', 'emailit-integration'),
+            'emailit_mailpoet_hard_bounce_action' => __('Hard Bounce Action in MailPoet', 'emailit-integration'),
+            'emailit_mailpoet_soft_bounce_threshold' => __('Soft Bounce Threshold', 'emailit-integration'),
+            'emailit_mailpoet_complaint_action' => __('Complaint Action in MailPoet', 'emailit-integration')
+        );
+
+        return isset($labels[$field_name]) ? $labels[$field_name] : $field_name;
     }
 
     /**
@@ -2310,10 +2594,9 @@ class Emailit_Admin {
                 if ($priority < 5) { // Our plugin uses priority 5
                     foreach ($callbacks as $callback) {
                         $function_name = $this->get_callback_name($callback['function']);
-                        // Only flag non-Emailit functions with higher priority
+                        // Only flag non-Emailit functions with higher priority (case-insensitive)
                         if ($function_name && 
-                            strpos($function_name, 'emailit') === false && 
-                            strpos($function_name, 'Emailit') === false) {
+                            stripos($function_name, 'emailit') === false) {
                             $high_priority_filters[] = $function_name;
                         }
                     }
@@ -2341,7 +2624,11 @@ class Emailit_Admin {
             foreach ($wp_filter['phpmailer_init']->callbacks as $priority => $callbacks) {
                 foreach ($callbacks as $callback) {
                     $function_name = $this->get_callback_name($callback['function']);
-                    if ($function_name && strpos($function_name, 'emailit') === false) {
+                    // Exclude our own Emailit methods (case-insensitive) and MailPoet integration
+                    if ($function_name && 
+                        stripos($function_name, 'emailit') === false && 
+                        stripos($function_name, 'Emailit_Mailer') === false &&
+                        stripos($function_name, 'Emailit_MailPoet') === false) {
                         $phpmailer_hooks[] = $function_name;
                     }
                 }
@@ -2488,6 +2775,14 @@ class Emailit_Admin {
 
     public function sanitize_checkbox($value) {
         return !empty($value) ? 1 : 0;
+    }
+
+    /**
+     * Sanitize MailPoet bounce action
+     */
+    public function sanitize_mailpoet_bounce_action($input) {
+        $allowed_actions = array('mark_bounced', 'mark_complained', 'unsubscribe', 'track_only');
+        return $this->validate_whitelist($input, $allowed_actions, 'mark_bounced');
     }
 
     /**

@@ -34,6 +34,11 @@ class Emailit_Webhook {
     private $rate_limit_window = 60; // Seconds
 
     /**
+     * MailPoet integration instance
+     */
+    private $mailpoet_integration;
+
+    /**
      * Constructor
      */
     public function __construct($logger) {
@@ -45,6 +50,9 @@ class Emailit_Webhook {
 
         // Initialize FluentCRM integration if available
         $this->init_fluentcrm_integration();
+        
+        // Initialize MailPoet integration if available
+        $this->init_mailpoet_integration();
     }
 
     /**
@@ -1167,6 +1175,59 @@ class Emailit_Webhook {
         add_action('fluent_crm/subscriber_status_changed', array($this, 'handle_fluentcrm_status_change'), 10, 3);
 
         $this->logger->log('FluentCRM bounce integration initialized successfully', Emailit_Logger::LEVEL_INFO);
+    }
+
+    /**
+     * Initialize MailPoet integration
+     * Detects MailPoet and sets up bounce handling integration
+     */
+    private function init_mailpoet_integration() {
+        // Check if MailPoet is active and available
+        if (!$this->is_mailpoet_available()) {
+            return;
+        }
+
+        $this->logger->log('MailPoet detected - initializing bounce integration', Emailit_Logger::LEVEL_INFO, array(
+            'mailpoet_version' => $this->get_mailpoet_version(),
+            'integration_enabled' => get_option('emailit_mailpoet_integration', 0)
+        ));
+
+        // Only integrate if enabled in settings
+        if (!get_option('emailit_mailpoet_integration', 0)) {
+            $this->logger->log('MailPoet integration disabled in settings', Emailit_Logger::LEVEL_INFO);
+            return;
+        }
+
+        // Load MailPoet integration classes
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-integration.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-subscriber-sync.php';
+        
+        // Initialize MailPoet integration
+        $this->mailpoet_integration = new Emailit_MailPoet_Integration($this->logger);
+        $this->mailpoet_integration->init();
+        
+        $this->logger->log('MailPoet integration initialized in webhook handler', Emailit_Logger::LEVEL_INFO);
+    }
+
+    /**
+     * Check if MailPoet is available
+     */
+    private function is_mailpoet_available() {
+        return class_exists('MailPoet\Mailer\MailerFactory');
+    }
+
+    /**
+     * Get MailPoet version
+     */
+    private function get_mailpoet_version() {
+        if (function_exists('get_plugin_data')) {
+            $plugin_file = WP_PLUGIN_DIR . '/mailpoet/mailpoet.php';
+            if (file_exists($plugin_file)) {
+                $plugin_data = get_plugin_data($plugin_file);
+                return $plugin_data['Version'] ?? 'Unknown';
+            }
+        }
+        return 'Unknown';
     }
 
     /**

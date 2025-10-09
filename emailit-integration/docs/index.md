@@ -81,7 +81,7 @@ If you can't find what you're looking for in this documentation:
 This documentation is designed for WordPress site administrators who want to improve their email delivery using Emailit Integration. It focuses on practical, step-by-step instructions and avoids technical jargon where possible.
 
 **Last Updated:** January 2025  
-**Plugin Version:** 3.0.4  
+**Plugin Version:** 0.3.1  
 **WordPress Compatibility:** 5.7+  
 **PHP Compatibility:** 8.0+
 

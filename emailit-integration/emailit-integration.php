@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 3.0.4
+ * Version: 0.3.1
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '3.0.4');
+define('EMAILIT_VERSION', '0.3.1');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -171,6 +171,9 @@ class Emailit_Integration {
         // Add conflict detection for other plugins as needed
         $conflicts = array();
         
+        // Check for MailPoet plugin conflict
+        $this->handle_mailpoet_conflict();
+        
         // Check for known conflicting plugins
         if (function_exists('is_plugin_active')) {
             $active_plugins = get_option('active_plugins', array());
@@ -189,6 +192,113 @@ class Emailit_Integration {
                 echo '</p></div>';
             });
         }
+    }
+
+    /**
+     * Handle MailPoet plugin conflict detection and compatibility
+     */
+    private function handle_mailpoet_conflict() {
+        // Check if MailPoet is active
+        if (!class_exists('MailPoet\Mailer\MailerFactory')) {
+            return;
+        }
+
+        // Get MailPoet version for compatibility checking
+        $mailpoet_version = $this->get_mailpoet_version();
+        
+        if ($mailpoet_version && version_compare($mailpoet_version, '5.0.0', '<')) {
+            add_action('admin_notices', array($this, 'mailpoet_version_notice'));
+            return;
+        }
+
+        // Check MailPoet's transactional email setting
+        $mailpoet_send_transactional = $this->get_mailpoet_transactional_setting();
+        
+        if ($mailpoet_send_transactional) {
+            // Both plugins will try to handle wp_mail() - show notice
+            add_action('admin_notices', array($this, 'mailpoet_transactional_conflict_notice'));
+        }
+
+        // Initialize MailPoet integration if enabled
+        if (get_option('emailit_mailpoet_integration', 0)) {
+            $this->init_mailpoet_integration();
+        }
+    }
+
+    /**
+     * Get MailPoet version
+     */
+    private function get_mailpoet_version() {
+        if (function_exists('get_plugin_data')) {
+            $plugin_file = WP_PLUGIN_DIR . '/mailpoet/mailpoet.php';
+            if (file_exists($plugin_file)) {
+                $plugin_data = get_plugin_data($plugin_file);
+                return $plugin_data['Version'] ?? null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get MailPoet's transactional email setting
+     */
+    private function get_mailpoet_transactional_setting() {
+        try {
+            // Try to get MailPoet's setting safely using the singleton instance
+            if (class_exists('MailPoet\Settings\SettingsController') && 
+                class_exists('MailPoet\DI\ContainerWrapper')) {
+                
+                // Check if MailPoet's container is available
+                $container = \MailPoet\DI\ContainerWrapper::getInstance();
+                if ($container) {
+                    $settings = \MailPoet\Settings\SettingsController::getInstance();
+                    return $settings->get('send_transactional_emails', false);
+                }
+            }
+        } catch (Exception $e) {
+            // If we can't access settings, assume it's disabled
+            error_log('Emailit: Could not access MailPoet settings: ' . $e->getMessage());
+            return false;
+        } catch (Error $e) {
+            // Handle fatal errors gracefully
+            error_log('Emailit: Fatal error accessing MailPoet settings: ' . $e->getMessage());
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * Initialize MailPoet integration
+     */
+    private function init_mailpoet_integration() {
+        // Load MailPoet integration classes
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-integration.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-handler.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-subscriber-sync.php';
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-mailpoet-interceptor.php';
+        
+        // Initialize MailPoet integration
+        $mailpoet_integration = new Emailit_MailPoet_Integration($this->logger);
+        $mailpoet_integration->init();
+    }
+
+    /**
+     * MailPoet version compatibility notice
+     */
+    public function mailpoet_version_notice() {
+        $message = sprintf(
+            __('Emailit Integration requires MailPoet version 5.0 or higher. You are running version %s. Please update MailPoet to use the integration features.', 'emailit-integration'),
+            $this->get_mailpoet_version()
+        );
+        printf('<div class="notice notice-warning"><p>%s</p></div>', esc_html($message));
+    }
+
+    /**
+     * MailPoet transactional email conflict notice
+     */
+    public function mailpoet_transactional_conflict_notice() {
+        $message = __('Emailit and MailPoet both have transactional email handling enabled. Emailit will take priority for WordPress emails. You can disable MailPoet\'s "Send transactional emails" setting or enable MailPoet integration in Emailit settings.', 'emailit-integration');
+        printf('<div class="notice notice-info"><p>%s</p></div>', esc_html($message));
     }
 
     /**
@@ -307,6 +417,12 @@ class Emailit_Integration {
             'Emailit_Sanitizer' => 'class-emailit-sanitizer.php',
             'Emailit_Memory_Manager' => 'class-emailit-memory-manager.php',
             'Emailit_Log_Archiver' => 'class-emailit-log-archiver.php',
+            'Emailit_MailPoet_Integration' => 'class-emailit-mailpoet-integration.php',
+            'Emailit_MailPoet_Handler' => 'class-emailit-mailpoet-handler.php',
+            'Emailit_MailPoet_Method' => 'class-emailit-mailpoet-method.php',
+            'Emailit_MailPoet_Error_Mapper' => 'class-emailit-mailpoet-error-mapper.php',
+            'Emailit_MailPoet_Subscriber_Sync' => 'class-emailit-mailpoet-subscriber-sync.php',
+            'Emailit_MailPoet_Takeover' => 'class-emailit-mailpoet-takeover.php',
             );
         }
 
@@ -1016,6 +1132,15 @@ class Emailit_Integration {
             'emailit_fluentcrm_soft_bounce_window' => 7,
             'emailit_fluentcrm_soft_bounce_reset_on_success' => 1,
             'emailit_fluentcrm_soft_bounce_history_limit' => 10,
+            // MailPoet Integration Options
+            'emailit_mailpoet_integration' => 0,
+            'emailit_mailpoet_register_method' => 0,
+            'emailit_mailpoet_override_transactional' => 1,
+            'emailit_mailpoet_sync_bounces' => 1,
+            'emailit_mailpoet_sync_engagement' => 1,
+            'emailit_mailpoet_hard_bounce_action' => 'mark_bounced',
+            'emailit_mailpoet_soft_bounce_threshold' => 5,
+            'emailit_mailpoet_complaint_action' => 'mark_complained',
         );
 
         foreach ($defaults as $option => $value) {
