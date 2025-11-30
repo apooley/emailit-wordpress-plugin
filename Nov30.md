@@ -1,0 +1,7 @@
+# Review Notes (Nov 30)
+
+- `emailit-integration/includes/class-emailit-api.php:161-200` — `prepare_request_data` collapses `to` to the first entry and mixes name/email arrays, so multi-recipient sends or named recipients are lost/malformed. Suggest building a normalized recipient list (preserve names) and passing a joined, sanitized string or API-supported array instead of `is_array ? first : value`.
+- `emailit-integration/includes/class-emailit-api.php:235-248` — Retry logic uses `sleep()` for exponential backoff in the request cycle, adding seconds to wp-admin/AJAX responses on API errors. Prefer a non-blocking retry (queue/cron) or limit retries to a single attempt when running in the request thread.
+- `emailit-integration/includes/class-emailit-logger.php:252-263` — Webhook logging stores full `raw_payload` for every event. This can bloat the DB and retain PII. Consider truncating or hashing payloads, gating full-body logging behind a debug flag, and capping stored length.
+- `emailit-integration/includes/class-emailit-logger.php:48-112` and `emailit-integration/emailit-integration.php:739-757` — Logs table retains full HTML/text bodies and webhook logs keep raw payloads. Provide a “minimal logging” toggle or length cap to keep tables lean and improve export/query performance.
+- QoL: No WP-CLI commands for queue drain/replay/webhook tests. Adding CLI equivalents for admin AJAX actions (process queue, resend failed, test webhook) would ease automation and ops workflows.

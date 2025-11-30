@@ -179,3 +179,4 @@ If you encounter issues during installation:
 
 **Ready to configure advanced features?** Continue to the [Configuration Guide](configuration.md) to set up webhooks, queues, and other advanced options.
 
+

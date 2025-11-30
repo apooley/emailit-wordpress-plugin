@@ -78,7 +78,7 @@ class Emailit_Webhook {
             ), 200);
         }
 
-        // Log all incoming webhook requests for debugging
+        // Log basic webhook request metadata for debugging (without storing full payload)
         $body = $request->get_body();
         $headers = $request->get_headers();
         $method = $request->get_method();
@@ -89,8 +89,7 @@ class Emailit_Webhook {
             'client_ip' => $client_ip,
             'headers' => $headers,
             'body_length' => strlen($body),
-            'body_preview' => substr($body, 0, 500), // First 500 chars for debugging
-            'full_body' => $body, // Full body for complete debugging
+            'body_preview' => substr($body, 0, 200),
             'timestamp' => current_time('mysql')
         ));
 
@@ -110,31 +109,35 @@ class Emailit_Webhook {
         $body = $request->get_body();
         $headers = $request->get_headers();
 
-        // Verify webhook signature if secret is configured
-        if (!empty($this->webhook_secret)) {
-            $this->logger->log('Webhook secret is configured, verifying signature', Emailit_Logger::LEVEL_INFO, array(
-                'webhook_secret_length' => strlen($this->webhook_secret),
-                'signature_header_present' => isset($headers['x-emailit-signature']) || isset($headers['X-Emailit-Signature'])
+        // Verify webhook signature (permission_callback already enforced, this is defense in depth)
+        $this->logger->log('Webhook secret is configured, verifying signature', Emailit_Logger::LEVEL_INFO, array(
+            'webhook_secret_length' => strlen($this->webhook_secret),
+            'signature_header_present' => isset($headers['x-emailit-signature']) || isset($headers['X-Emailit-Signature'])
+        ));
+
+        if (empty($this->webhook_secret)) {
+            return new WP_Error(
+                'webhook_not_configured',
+                __('Webhook secret not set. Configure Emailit webhook secret before accepting requests.', 'emailit-integration'),
+                array('status' => 403)
+            );
+        }
+
+        if (!$this->verify_signature($body, $headers)) {
+            $this->logger->log('Webhook signature verification failed', Emailit_Logger::LEVEL_ERROR, array(
+                'headers' => $headers,
+                'body_hash' => hash('sha256', $body),
+                'ip' => $client_ip,
+                'webhook_secret_configured' => !empty($this->webhook_secret)
             ));
 
-            if (!$this->verify_signature($body, $headers)) {
-                $this->logger->log('Webhook signature verification failed', Emailit_Logger::LEVEL_ERROR, array(
-                    'headers' => $headers,
-                    'body_hash' => hash('sha256', $body),
-                    'ip' => $client_ip,
-                    'webhook_secret_configured' => !empty($this->webhook_secret)
-                ));
-
-                return new WP_Error(
-                    'invalid_signature',
-                    __('Webhook signature verification failed.', 'emailit-integration'),
-                    array('status' => 401)
-                );
-            } else {
-                $this->logger->log('Webhook signature verification successful', Emailit_Logger::LEVEL_INFO);
-            }
+            return new WP_Error(
+                'invalid_signature',
+                __('Webhook signature verification failed.', 'emailit-integration'),
+                array('status' => 401)
+            );
         } else {
-            $this->logger->log('No webhook secret configured, skipping signature verification', Emailit_Logger::LEVEL_INFO);
+            $this->logger->log('Webhook signature verification successful', Emailit_Logger::LEVEL_INFO);
         }
 
         // Parse webhook data
@@ -253,7 +256,27 @@ class Emailit_Webhook {
      * Verify webhook permission
      */
     public function verify_webhook_permission($request) {
-        // For webhooks, we verify signature instead of WordPress permissions
+        // Require a configured secret before accepting any webhook traffic
+        if (empty($this->webhook_secret)) {
+            return new WP_Error(
+                'webhook_not_configured',
+                __('Webhook secret not set. Configure Emailit webhook secret before accepting requests.', 'emailit-integration'),
+                array('status' => 403)
+            );
+        }
+
+        // Verify signature early to avoid processing/logging untrusted payloads
+        $body = $request->get_body();
+        $headers = $request->get_headers();
+
+        if (!$this->verify_signature($body, $headers)) {
+            return new WP_Error(
+                'invalid_signature',
+                __('Webhook signature verification failed.', 'emailit-integration'),
+                array('status' => 401)
+            );
+        }
+
         return true;
     }
 

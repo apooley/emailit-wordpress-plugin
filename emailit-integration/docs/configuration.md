@@ -355,3 +355,4 @@ If you need help with configuration:
 
 **Ready to start using the plugin?** Check out the [User Guide](user-guide.md) to learn how to monitor emails and use all the features.
 
+

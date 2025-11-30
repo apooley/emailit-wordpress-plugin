@@ -299,3 +299,4 @@ This FAQ covers the most common questions about Emailit Integration. If you don'
 
 **Still have questions?** Check the [Troubleshooting Guide](troubleshooting.md) for more detailed solutions or review the [Best Practices](best-practices.md) for optimization tips.
 
+

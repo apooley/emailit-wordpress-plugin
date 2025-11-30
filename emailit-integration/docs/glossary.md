@@ -222,3 +222,4 @@ This glossary defines key terms and concepts used in Emailit Integration. Unders
 
 **Need more help understanding these terms?** Check the [User Guide](user-guide.md) for practical examples or the [FAQ](faq.md) for common questions about these concepts.
 
+

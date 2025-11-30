@@ -1793,7 +1793,7 @@ class Emailit_Admin {
 
         // CSV data
         foreach ($logs as $log) {
-            fputcsv($output, array(
+            $row = array(
                 $log['id'],
                 $log['created_at'],
                 $log['to_email'],
@@ -1802,7 +1802,12 @@ class Emailit_Admin {
                 $log['status'],
                 $log['email_id'],
                 $log['sent_at']
-            ));
+            );
+
+            // Escape spreadsheet-formula prefixes to prevent CSV injection
+            $safe_row = array_map(array($this, 'escape_csv_cell'), $row);
+
+            fputcsv($output, $safe_row);
         }
 
         fclose($output);
@@ -1820,6 +1825,23 @@ class Emailit_Admin {
 
         echo wp_json_encode($logs, JSON_PRETTY_PRINT);
         exit;
+    }
+
+    /**
+     * Escape CSV cell to mitigate formula injection in spreadsheet apps
+     */
+    private function escape_csv_cell($value) {
+        // Normalize to string and strip control chars
+        $value = is_scalar($value) ? (string) $value : '';
+        $value = preg_replace('/[\x00-\x1F\x7F]/', ' ', $value);
+
+        // If the value starts with a risky character, prefix with a single quote
+        $trimmed = ltrim($value);
+        if (preg_match('/^[=+\\-@]/', $trimmed)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     /**
