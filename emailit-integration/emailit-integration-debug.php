@@ -21,7 +21,7 @@ define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('EMAILIT_PLUGIN_BASENAME', plugin_basename(__FILE__));
-define('EMAILIT_API_ENDPOINT', 'https://api.emailit.com/v1/emails');
+define('EMAILIT_API_ENDPOINT', 'https://api.emailit.com/v2/emails');
 define('EMAILIT_WEBHOOK_ENDPOINT', 'emailit/v1/webhook');
 
 /**

@@ -3,7 +3,7 @@
  * Plugin Name: Emailit Integration
  * Plugin URI: https://github.com/apooley/emailit-integration
  * Description: Integrates WordPress with Emailit email service, replacing wp_mail() with API-based email sending, logging, and webhook status updates.
- * Version: 3.0.4
+ * Version: 3.1.0
  * Author: Allen Pooley
  * Author URI: https://allenpooley.ca
  * License: GPL v2 or later
@@ -22,12 +22,12 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('EMAILIT_VERSION', '3.0.4');
+define('EMAILIT_VERSION', '3.1.0');
 define('EMAILIT_PLUGIN_FILE', __FILE__);
 define('EMAILIT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EMAILIT_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('EMAILIT_PLUGIN_BASENAME', plugin_basename(__FILE__));
-define('EMAILIT_API_ENDPOINT', 'https://api.emailit.com/v1/emails');
+define('EMAILIT_API_ENDPOINT', 'https://api.emailit.com/v2/emails');
 define('EMAILIT_WEBHOOK_ENDPOINT', 'emailit/v1/webhook');
 
 /**
@@ -54,6 +54,7 @@ class Emailit_Integration {
     private $fluentcrm_handler = null;
     private $health_monitor = null;
     private $webhook_monitor = null;
+    private $woocommerce = null;
 
     /**
      * Get plugin instance
@@ -271,6 +272,14 @@ class Emailit_Integration {
 
         // Always load admin class (needed for FluentCRM integration filters)
         require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-admin.php';
+
+        // Load WooCommerce integration class (conditionally initialized)
+        require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-woocommerce.php';
+
+        // Load WP-CLI commands if WP-CLI is available
+        if (defined('WP_CLI') && WP_CLI) {
+            require_once EMAILIT_PLUGIN_DIR . 'includes/class-emailit-cli.php';
+        }
     }
 
     /**
@@ -302,6 +311,7 @@ class Emailit_Integration {
                 'Emailit_FluentCRM_Handler' => 'class-emailit-fluentcrm-handler.php',
                 'Emailit_Webhook_Monitor' => 'class-emailit-webhook-monitor.php',
                 'Emailit_Bounce_Classifier' => 'class-emailit-bounce-classifier.php',
+                'Emailit_WooCommerce' => 'class-emailit-woocommerce.php',
             'Emailit_Query_Optimizer' => 'class-emailit-query-optimizer.php',
             'Emailit_Database_Optimizer' => 'class-emailit-database-optimizer.php',
             'Emailit_Sanitizer' => 'class-emailit-sanitizer.php',
@@ -376,6 +386,11 @@ class Emailit_Integration {
         
         // Initialize webhook monitoring
         $this->webhook_monitor = new Emailit_Webhook_Monitor($this->logger);
+
+        // Initialize WooCommerce integration (only if WooCommerce is active AND feature is enabled)
+        if (class_exists('WooCommerce') && get_option('emailit_wc_enabled', false)) {
+            $this->woocommerce = Emailit_WooCommerce::get_instance($this->logger, $this->api);
+        }
 
         // Initialize advanced error handling
         $this->init_advanced_error_handling();
@@ -1016,6 +1031,12 @@ class Emailit_Integration {
             'emailit_fluentcrm_soft_bounce_window' => 7,
             'emailit_fluentcrm_soft_bounce_reset_on_success' => 1,
             'emailit_fluentcrm_soft_bounce_history_limit' => 10,
+            // WooCommerce Integration Options
+            'emailit_wc_enabled' => 0,
+            'emailit_wc_audience_id' => '',
+            'emailit_wc_checkbox_label' => __('Subscribe to our newsletter', 'emailit-integration'),
+            'emailit_wc_checkbox_default' => 0,
+            'emailit_wc_custom_optin_meta_key' => '',
         );
 
         foreach ($defaults as $option => $value) {

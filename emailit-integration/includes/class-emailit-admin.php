@@ -70,6 +70,70 @@ class Emailit_Admin {
     }
 
     /**
+     * Sanitize boolean value
+     * 
+     * @param mixed $value Value to sanitize
+     * @return bool Sanitized boolean
+     */
+    public function sanitize_boolean($value) {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * AJAX handler: Get pending subscription count (WooCommerce)
+     * Routes to WooCommerce class if available
+     */
+    public function ajax_wc_get_pending_count() {
+        // Check if WooCommerce integration is enabled
+        if (!Emailit_WooCommerce::is_enabled()) {
+            wp_send_json_error(array('message' => __('WooCommerce integration is not enabled.', 'emailit-integration')));
+        }
+
+        $woocommerce = Emailit_WooCommerce::get_instance($this->logger, $this->api);
+        if ($woocommerce && method_exists($woocommerce, 'ajax_get_pending_count')) {
+            $woocommerce->ajax_get_pending_count();
+        } else {
+            wp_send_json_error(array('message' => __('WooCommerce integration not available.', 'emailit-integration')));
+        }
+    }
+
+    /**
+     * AJAX handler: Process pending orders (WooCommerce)
+     * Routes to WooCommerce class if available
+     */
+    public function ajax_wc_process_pending() {
+        // Check if WooCommerce integration is enabled
+        if (!Emailit_WooCommerce::is_enabled()) {
+            wp_send_json_error(array('message' => __('WooCommerce integration is not enabled.', 'emailit-integration')));
+        }
+
+        $woocommerce = Emailit_WooCommerce::get_instance($this->logger, $this->api);
+        if ($woocommerce && method_exists($woocommerce, 'ajax_process_pending_orders')) {
+            $woocommerce->ajax_process_pending_orders();
+        } else {
+            wp_send_json_error(array('message' => __('WooCommerce integration not available.', 'emailit-integration')));
+        }
+    }
+
+    /**
+     * AJAX handler: Store total count (WooCommerce)
+     * Routes to WooCommerce class if available
+     */
+    public function ajax_wc_store_total_count() {
+        // Check if WooCommerce integration is enabled
+        if (!Emailit_WooCommerce::is_enabled()) {
+            wp_send_json_error(array('message' => __('WooCommerce integration is not enabled.', 'emailit-integration')));
+        }
+
+        $woocommerce = Emailit_WooCommerce::get_instance($this->logger, $this->api);
+        if ($woocommerce && method_exists($woocommerce, 'ajax_store_total_count')) {
+            $woocommerce->ajax_store_total_count();
+        } else {
+            wp_send_json_error(array('message' => __('WooCommerce integration not available.', 'emailit-integration')));
+        }
+    }
+
+    /**
      * Initialize admin functionality
      */
     public function init() {
@@ -80,6 +144,13 @@ class Emailit_Admin {
 
         // Register settings
         $this->register_settings();
+
+        // WooCommerce AJAX handlers (only if WooCommerce is active)
+        if (class_exists('WooCommerce')) {
+            add_action('wp_ajax_emailit_wc_get_pending_count', array($this, 'ajax_wc_get_pending_count'));
+            add_action('wp_ajax_emailit_wc_process_pending', array($this, 'ajax_wc_process_pending'));
+            add_action('wp_ajax_emailit_wc_store_total_count', array($this, 'ajax_wc_store_total_count'));
+        }
 
         // Add AJAX handlers
         add_action('wp_ajax_emailit_send_test_email', array($this, 'ajax_send_test_email'));
@@ -193,6 +264,37 @@ class Emailit_Admin {
             'default' => ''
         ));
 
+        // WooCommerce Settings
+        register_setting('emailit-settings', 'emailit_wc_enabled', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_boolean'),
+            'default' => false
+        ));
+
+        register_setting('emailit-settings', 'emailit_wc_audience_id', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => ''
+        ));
+
+        register_setting('emailit-settings', 'emailit_wc_checkbox_label', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => __('Subscribe to our newsletter', 'emailit-integration')
+        ));
+
+        register_setting('emailit-settings', 'emailit_wc_checkbox_default', array(
+            'type' => 'boolean',
+            'sanitize_callback' => array($this, 'sanitize_boolean'),
+            'default' => false
+        ));
+
+        register_setting('emailit-settings', 'emailit_wc_custom_optin_meta_key', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => ''
+        ));
+
         // Email Settings
         register_setting('emailit-settings', 'emailit_from_name', array(
             'type' => 'string',
@@ -224,6 +326,17 @@ class Emailit_Admin {
             'default' => 30
         ));
 
+        register_setting('emailit-settings', 'emailit_minimal_logging', array(
+            'type' => 'boolean',
+            'default' => false
+        ));
+
+        register_setting('emailit-settings', 'emailit_log_body_max_length', array(
+            'type' => 'integer',
+            'sanitize_callback' => array($this, 'sanitize_log_body_max_length'),
+            'default' => 10000
+        ));
+
 
         // Advanced Settings (separate settings group)
         register_setting('emailit-advanced-settings', 'emailit_fallback_enabled', array(
@@ -252,6 +365,24 @@ class Emailit_Admin {
         register_setting('emailit-advanced-settings', 'emailit_enable_webhooks', array(
             'type' => 'boolean',
             'default' => 1
+        ));
+
+        register_setting('emailit-advanced-settings', 'emailit_webhook_payload_logging', array(
+            'type' => 'string',
+            'sanitize_callback' => array($this, 'sanitize_webhook_payload_logging'),
+            'default' => 'truncated'
+        ));
+
+        register_setting('emailit-advanced-settings', 'emailit_webhook_payload_max_length', array(
+            'type' => 'integer',
+            'sanitize_callback' => array($this, 'sanitize_webhook_payload_max_length'),
+            'default' => 5000
+        ));
+
+        register_setting('emailit-advanced-settings', 'emailit_webhook_payload_retention_days', array(
+            'type' => 'integer',
+            'sanitize_callback' => array($this, 'sanitize_webhook_payload_retention_days'),
+            'default' => 0
         ));
 
         // Queue/Async settings
@@ -479,6 +610,22 @@ class Emailit_Admin {
             'emailit_logging_section'
         );
 
+        add_settings_field(
+            'emailit_minimal_logging',
+            __('Minimal Logging', 'emailit-integration'),
+            array($this, 'minimal_logging_field_callback'),
+            'emailit-settings',
+            'emailit_logging_section'
+        );
+
+        add_settings_field(
+            'emailit_log_body_max_length',
+            __('Max Body Length (Characters)', 'emailit-integration'),
+            array($this, 'log_body_max_length_field_callback'),
+            'emailit-settings',
+            'emailit_logging_section'
+        );
+
         // Performance/Queue fields
         add_settings_field(
             'emailit_enable_queue',
@@ -541,6 +688,30 @@ class Emailit_Admin {
             'emailit_webhook_secret',
             __('Webhook Secret', 'emailit-integration'),
             array($this, 'webhook_secret_field_callback'),
+            'emailit-advanced-settings',
+            'emailit_webhook_section'
+        );
+
+        add_settings_field(
+            'emailit_webhook_payload_logging',
+            __('Webhook Payload Logging', 'emailit-integration'),
+            array($this, 'webhook_payload_logging_field_callback'),
+            'emailit-advanced-settings',
+            'emailit_webhook_section'
+        );
+
+        add_settings_field(
+            'emailit_webhook_payload_max_length',
+            __('Webhook Payload Max Length (Characters)', 'emailit-integration'),
+            array($this, 'webhook_payload_max_length_field_callback'),
+            'emailit-advanced-settings',
+            'emailit_webhook_section'
+        );
+
+        add_settings_field(
+            'emailit_webhook_payload_retention_days',
+            __('Webhook Payload Retention (Days)', 'emailit-integration'),
+            array($this, 'webhook_payload_retention_days_field_callback'),
             'emailit-advanced-settings',
             'emailit_webhook_section'
         );
@@ -883,6 +1054,28 @@ class Emailit_Admin {
             }
             echo '</div>';
             
+            // Show domain scope information if available
+            try {
+                $domain_scope = $this->api->get_api_key_domain_scope();
+                if (is_array($domain_scope) && !empty($domain_scope['domain'])) {
+                    echo '<div class="emailit-domain-scope-info" style="margin-top: 10px; padding: 8px; background: #f0f0f1; border-left: 4px solid #2271b1; border-radius: 2px;">';
+                    echo '<span class="dashicons dashicons-admin-site-alt3" style="vertical-align: middle;"></span> ';
+                    echo '<strong>' . esc_html__('Domain Scope:', 'emailit-integration') . '</strong> ';
+                    if (!empty($domain_scope['unrestricted']) && $domain_scope['unrestricted']) {
+                        echo '<span style="color: #00a32a;">' . esc_html__('Unrestricted (all domains allowed)', 'emailit-integration') . '</span>';
+                    } else {
+                        $domains = !empty($domain_scope['domains']) ? $domain_scope['domains'] : array($domain_scope['domain']);
+                        echo '<span style="color: #2271b1; font-family: monospace;">' . esc_html(implode(', ', $domains)) . '</span>';
+                        echo '<p style="margin: 5px 0 0 0; font-size: 12px; color: #646970;">';
+                        echo esc_html__('Emails must be sent from an address matching this domain.', 'emailit-integration');
+                        echo '</p>';
+                    }
+                    echo '</div>';
+                }
+            } catch (Exception $e) {
+                // Silently fail if domain scope can't be retrieved
+            }
+            
             echo '<div class="emailit-api-key-actions">';
             echo '<button type="button" id="clear-api-key" class="button button-secondary">';
             echo '<span class="dashicons dashicons-trash"></span> Clear API Key';
@@ -939,6 +1132,20 @@ class Emailit_Admin {
         echo '<input type="number" id="emailit_log_retention_days" name="emailit_log_retention_days" value="' . esc_attr($value) . '" min="0" max="365" class="small-text" />';
         echo '<p class="description">' . __('Number of days to keep email logs. Set to 0 to keep logs indefinitely.', 'emailit-integration') . '</p>';
     }
+
+    public function minimal_logging_field_callback() {
+        $value = get_option('emailit_minimal_logging', false);
+        echo '<label><input type="checkbox" id="emailit_minimal_logging" name="emailit_minimal_logging" value="1" ' . checked(1, $value, false) . ' /> ';
+        echo __('Enable minimal logging mode', 'emailit-integration') . '</label>';
+        echo '<p class="description">' . __('When enabled, email body content will be truncated to reduce database size. Full content is only preserved when explicitly needed (debug mode).', 'emailit-integration') . '</p>';
+    }
+
+    public function log_body_max_length_field_callback() {
+        $value = get_option('emailit_log_body_max_length', 10000);
+        echo '<input type="number" id="emailit_log_body_max_length" name="emailit_log_body_max_length" value="' . esc_attr($value) . '" min="1000" max="100000" class="small-text" />';
+        echo '<p class="description">' . __('Maximum length (in characters) for email body content when minimal logging is enabled. Range: 1,000 - 100,000 characters.', 'emailit-integration') . '</p>';
+    }
+
 
     public function enable_queue_field_callback() {
         $value = get_option('emailit_enable_queue', 0);
@@ -1026,6 +1233,28 @@ class Emailit_Admin {
         if (!$webhooks_enabled) {
             echo '<p class="description" style="color: #666;"><em>' . __('Webhook secret is disabled when webhooks are turned off.', 'emailit-integration') . '</em></p>';
         }
+    }
+
+    public function webhook_payload_logging_field_callback() {
+        $value = get_option('emailit_webhook_payload_logging', 'truncated');
+        echo '<select name="emailit_webhook_payload_logging" id="emailit_webhook_payload_logging" class="regular-text">';
+        echo '<option value="full" ' . selected('full', $value, false) . '>' . __('Full (debug mode only)', 'emailit-integration') . '</option>';
+        echo '<option value="truncated" ' . selected('truncated', $value, false) . '>' . __('Truncated (recommended)', 'emailit-integration') . '</option>';
+        echo '<option value="hash_only" ' . selected('hash_only', $value, false) . '>' . __('Hash Only', 'emailit-integration') . '</option>';
+        echo '</select>';
+        echo '<p class="description">' . __('How to store webhook payloads. Truncated mode stores first N characters plus hash. Hash only stores just the hash for verification.', 'emailit-integration') . '</p>';
+    }
+
+    public function webhook_payload_max_length_field_callback() {
+        $value = get_option('emailit_webhook_payload_max_length', 5000);
+        echo '<input type="number" id="emailit_webhook_payload_max_length" name="emailit_webhook_payload_max_length" value="' . esc_attr($value) . '" min="500" max="50000" class="small-text" />';
+        echo '<p class="description">' . __('Maximum length (in characters) for webhook payloads when using truncated mode. Range: 500 - 50,000 characters.', 'emailit-integration') . '</p>';
+    }
+
+    public function webhook_payload_retention_days_field_callback() {
+        $value = get_option('emailit_webhook_payload_retention_days', 0);
+        echo '<input type="number" id="emailit_webhook_payload_retention_days" name="emailit_webhook_payload_retention_days" value="' . esc_attr($value) . '" min="0" max="7" class="small-text" />';
+        echo '<p class="description">' . __('How many days to keep full webhook payloads (0 disables full retention and truncates immediately). Range: 0-7 days.', 'emailit-integration') . '</p>';
     }
 
     /**
@@ -2492,6 +2721,28 @@ class Emailit_Admin {
         return $value;
     }
 
+
+    public function sanitize_log_body_max_length($value) {
+        $value = (int) $value;
+        // Enforce reasonable limits: 1000 to 100000 characters
+        return max(1000, min(100000, $value));
+    }
+
+    public function sanitize_webhook_payload_logging($value) {
+        $allowed = array('full', 'truncated', 'hash_only');
+        return in_array($value, $allowed, true) ? $value : 'truncated';
+    }
+
+    public function sanitize_webhook_payload_max_length($value) {
+        $value = (int) $value;
+        // Enforce reasonable limits: 500 to 50000 characters
+        return max(500, min(50000, $value));
+    }
+
+    public function sanitize_webhook_payload_retention_days($value) {
+        $value = (int) $value;
+        return max(0, min(7, $value));
+    }
 
     public function sanitize_retention_days($value) {
         $value = intval($value);

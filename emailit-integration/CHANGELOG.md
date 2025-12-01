@@ -87,3 +87,16 @@ All notable changes to the Emailit Integration plugin will be documented in this
 - **PHP 8.0+ Support**: Optimized for latest PHP versions
 - **Enhanced Security**: Improved input validation and sanitization
 - **Better Integration**: Seamless WordPress and third-party plugin compatibility
+## [3.1.0] - 2025-11-30
+
+### Added
+- WooCommerce audience opt-in (checkout checkbox) and migration tool to subscribe past buyers.
+- WP-CLI coverage for queue, resend, stats, webhook testing, logs clean/export, and test email.
+- Configurable webhook payload retention (0–7 days) with truncation by default.
+
+### Changed
+- Webhook ingestion hardened: signature required, replay protection, rate limiting; safer payload logging defaults.
+- WooCommerce fallback now resolves decrypted API key via the API component before subscribing.
+
+### Fixed
+- Retry flow retains original email payload for queuing in request-thread failures.

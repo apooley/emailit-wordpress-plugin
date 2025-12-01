@@ -114,6 +114,12 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
             <?php _e('FluentCRM', 'emailit-integration'); ?>
         </a>
         <?php endif; ?>
+        <?php if (class_exists('WooCommerce')): ?>
+        <a href="#woocommerce" data-tab="woocommerce"
+           class="nav-tab <?php echo $current_tab === 'woocommerce' ? 'nav-tab-active active' : ''; ?>">
+            <?php _e('WooCommerce', 'emailit-integration'); ?>
+        </a>
+        <?php endif; ?>
     </nav>
 
     <!-- General Settings Tab -->
@@ -1255,6 +1261,21 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 </div>
         </div>
     </div>
+    <?php endif; ?>
+
+    <!-- WooCommerce Settings Tab -->
+    <?php if (class_exists('WooCommerce')): ?>
+    <div id="woocommerce" class="emailit-tab-pane <?php echo $current_tab === 'woocommerce' ? 'active' : ''; ?>">
+        <form method="post" action="options.php">
+            <?php
+            settings_fields('emailit-settings');
+            wp_nonce_field('emailit_settings_nonce', 'emailit_settings_nonce');
+            ?>
+            <?php include EMAILIT_PLUGIN_DIR . 'admin/views/woocommerce-settings.php'; ?>
+            <?php submit_button(); ?>
+        </form>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script>

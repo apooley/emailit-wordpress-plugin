@@ -116,8 +116,8 @@ class Emailit_API {
         // Apply filters to allow modification
         $request_data = apply_filters('emailit_api_request_data', $request_data, $email_data);
 
-        // Send with retry logic
-        $response = $this->send_with_retry($request_data);
+        // Send with retry logic (pass original email_data for queueing if needed)
+        $response = $this->send_with_retry($request_data, 1, $email_data);
 
         // Calculate response time
         $response_time = microtime(true) - $start_time;
@@ -152,6 +152,12 @@ class Emailit_API {
             return new WP_Error('invalid_from_email', __('From email address is invalid.', 'emailit-integration'));
         }
 
+        // Validate domain scope for API key (v2 feature)
+        $domain_validation = $this->validate_domain_scope($email_data);
+        if (is_wp_error($domain_validation)) {
+            return $domain_validation;
+        }
+
         return true;
     }
 
@@ -164,9 +170,9 @@ class Emailit_API {
         $from_email = get_option('emailit_from_email', get_bloginfo('admin_email'));
         $reply_to = get_option('emailit_reply_to', '');
 
-        // Format recipients (API expects single string, not array)
+        // Format recipients - preserve all recipients and their names
         $to_emails = $this->parse_email_addresses($email_data['to']);
-        $to_string = is_array($to_emails) ? $to_emails[0] : $to_emails;
+        $to_string = $this->format_recipients_for_api($to_emails);
 
         // Format from address (API expects "Name <email>" format)
         $from_email_final = isset($email_data['from']) ? $email_data['from'] : $from_email;
@@ -202,9 +208,73 @@ class Emailit_API {
     }
 
     /**
+     * Format recipients for EmailIt API v2 request
+     * Preserves all recipients and their names in a normalized format
+     * EmailIt API v2 accepts comma-separated recipient strings
+     * 
+     * @param array|string $to_emails Parsed email addresses
+     * @return string Comma-separated recipient string with names preserved (API v2 compatible)
+     */
+    private function format_recipients_for_api($to_emails) {
+        if (empty($to_emails)) {
+            return '';
+        }
+
+        // Handle non-array case (shouldn't happen after parse_email_addresses, but be safe)
+        if (!is_array($to_emails)) {
+            // If it's already a string, validate it's a valid email format
+            if (is_string($to_emails)) {
+                // Check if it's already comma-separated (multiple recipients)
+                if (strpos($to_emails, ',') !== false) {
+                    // Already formatted, return as-is (but sanitize)
+                    $emails = array_map('trim', explode(',', $to_emails));
+                    $valid_emails = array_filter($emails, 'is_email');
+                    return implode(', ', $valid_emails);
+                }
+                // Single email, validate and return
+                return is_email($to_emails) ? sanitize_email($to_emails) : '';
+            }
+            return '';
+        }
+
+        $formatted = array();
+        foreach ($to_emails as $recipient) {
+            if (is_array($recipient) && isset($recipient['email'])) {
+                // Named recipient: "Name <email@domain.com>" (RFC 5322 format)
+                $name = !empty($recipient['name']) ? trim($recipient['name']) : '';
+                $email = sanitize_email($recipient['email']);
+                
+                if (is_email($email)) {
+                    if (!empty($name)) {
+                        // Escape name if it contains special characters (RFC 5322 compliant)
+                        // Remove characters that could break the format
+                        $name = str_replace(array('<', '>', '"', "\n", "\r"), '', $name);
+                        $name = trim($name);
+                        // If name contains comma, wrap in quotes
+                        if (strpos($name, ',') !== false || strpos($name, ';') !== false) {
+                            $name = '"' . addslashes($name) . '"';
+                        }
+                        $formatted[] = sprintf('%s <%s>', $name, $email);
+                    } else {
+                        $formatted[] = $email;
+                    }
+                }
+            } elseif (is_string($recipient) && is_email($recipient)) {
+                // Plain email address
+                $formatted[] = sanitize_email($recipient);
+            }
+        }
+
+        // Return comma-separated string (EmailIt API v2 compatible format)
+        // API v2 accepts: "email1@example.com, email2@example.com" or
+        // "Name1 <email1@example.com>, Name2 <email2@example.com>"
+        return implode(', ', $formatted);
+    }
+
+    /**
      * Send request with retry logic
      */
-    private function send_with_retry($request_data, $attempt = 1) {
+    private function send_with_retry($request_data, $attempt = 1, $original_email_data = null) {
         $response = $this->make_api_request($request_data);
 
         // If successful, handle success and return
@@ -232,6 +302,30 @@ class Emailit_API {
             return $response;
         }
 
+        // Check if we're in a request thread (wp-admin/AJAX context)
+        // In request threads, queue for background processing instead of blocking
+        if ($this->is_request_thread()) {
+            // Queue the email for background retry instead of blocking
+            if ($original_email_data && $this->queue_email_for_retry($original_email_data, $attempt)) {
+                if ($this->logger) {
+                    $this->logger->log(
+                        sprintf('Emailit API attempt %d failed, queued for background retry', $attempt),
+                        'warning',
+                        array('error' => $response->get_error_message())
+                    );
+                }
+                // Return error but indicate it's been queued
+                return new WP_Error(
+                    'api_error_queued',
+                    __('Email failed to send and has been queued for retry.', 'emailit-integration'),
+                    array('queued' => true, 'original_error' => $response)
+                );
+            }
+            // If queueing failed, return the error
+            return $response;
+        }
+
+        // In background/cron context, allow full retry with exponential backoff
         // Log retry attempt
         if ($this->logger) {
             $this->logger->log(
@@ -241,11 +335,65 @@ class Emailit_API {
             );
         }
 
-        // Wait before retry (exponential backoff)
+        // Wait before retry (exponential backoff) - only in background context
         sleep(pow(2, $attempt - 1));
 
         // Retry
-        return $this->send_with_retry($request_data, $attempt + 1);
+        return $this->send_with_retry($request_data, $attempt + 1, $original_email_data);
+    }
+
+    /**
+     * Check if we're in a request thread (wp-admin or AJAX context)
+     * 
+     * @return bool True if in request thread, false if in background/cron
+     */
+    private function is_request_thread() {
+        // In admin context (wp-admin pages)
+        if (is_admin()) {
+            return true;
+        }
+
+        // In AJAX context
+        if (wp_doing_ajax()) {
+            return true;
+        }
+
+        // In REST API context (but not cron)
+        if (defined('REST_REQUEST') && REST_REQUEST && !wp_doing_cron()) {
+            return true;
+        }
+
+        // Not in request thread (cron, CLI, etc.)
+        return false;
+    }
+
+    /**
+     * Queue email for background retry
+     * 
+     * @param array $email_data Original email data
+     * @param int $attempt Current attempt number
+     * @return bool|WP_Error True on success, WP_Error on failure
+     */
+    private function queue_email_for_retry($email_data, $attempt) {
+        // Get queue instance
+        $queue = emailit_get_component('queue');
+        if (!$queue) {
+            return false;
+        }
+
+        // Calculate delay using exponential backoff (in seconds)
+        $delay = min(300, pow(2, $attempt) * 60); // Max 5 minutes
+
+        // Add to queue with appropriate priority (higher priority for retries)
+        $priority = 10 + $attempt; // Lower number = higher priority
+
+        $result = $queue->add_email($email_data, $priority, $delay);
+
+        if (is_wp_error($result)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -309,6 +457,10 @@ class Emailit_API {
         } else {
             // Error
             $error_message = isset($parsed_response['message']) ? $parsed_response['message'] : 'Unknown API error';
+            
+            // Check for domain scope errors and update scope if detected
+            $this->handle_domain_scope_error($parsed_response, $error_message, $response_code);
+            
             $default_message = sprintf(__('Emailit API error (%d): %s', 'emailit-integration'), $response_code, $error_message);
 
             // Apply filter to allow customization of error messages
@@ -658,6 +810,118 @@ class Emailit_API {
     }
 
     /**
+     * Get decrypted API key (static method for use when API instance is not available)
+     * 
+     * @return string Decrypted API key or empty string if not set or decryption fails
+     */
+    public static function get_decrypted_api_key() {
+        // Check WordPress transient cache (30 seconds only for security)
+        $transient_key = 'emailit_api_key_cache_' . get_current_user_id();
+        $cached_key = get_transient($transient_key);
+        if ($cached_key !== false) {
+            return $cached_key;
+        }
+
+        $key = get_option('emailit_api_key', '');
+
+        if (empty($key)) {
+            return '';
+        }
+
+        // Check if the key looks encrypted (base64 encoded)
+        // If it's not encrypted, return as-is (for backward compatibility)
+        if (self::is_encrypted_static($key)) {
+            try {
+                $decrypted = self::decrypt_string_static($key);
+
+                // If new decryption fails, try legacy decryption
+                if (empty($decrypted) && strlen($key) > 50) {
+                    $decrypted = self::decrypt_string_legacy_static($key);
+
+                    // If legacy decryption works, re-encrypt with new method
+                    if (!empty($decrypted)) {
+                        // Create temporary instance to re-encrypt
+                        $temp_api = new self();
+                        $temp_api->set_api_key($decrypted);
+                    }
+                }
+            } catch (Exception $e) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[Emailit] Error decrypting API key: ' . $e->getMessage());
+                }
+                return '';
+            }
+
+            set_transient($transient_key, $decrypted, 30); // Cache for 30 seconds only
+            return $decrypted;
+        }
+
+        set_transient($transient_key, $key, 30); // Cache for 30 seconds only
+        return $key;
+    }
+
+    /**
+     * Check if a string appears to be encrypted (static version)
+     */
+    private static function is_encrypted_static($string) {
+        // First try new GCM format
+        if (base64_encode(base64_decode($string, true)) === $string) {
+            $decoded = base64_decode($string);
+            // GCM format: 12 bytes IV + 16 bytes tag + ciphertext (minimum 28 bytes)
+            if (strlen($decoded) >= 28) {
+                return true;
+            }
+        }
+
+        // Legacy detection for backward compatibility
+        return base64_encode(base64_decode($string, true)) === $string && strlen($string) > 50;
+    }
+
+    /**
+     * Decrypt string using secure AES-256-GCM decryption (static version)
+     */
+    private static function decrypt_string_static($encrypted_string) {
+        if (empty($encrypted_string)) {
+            return '';
+        }
+
+        $cipher = 'AES-256-GCM';
+
+        // Generate the same key
+        $key = hash('sha256', wp_salt('auth') . wp_salt('secure_auth'), true);
+
+        // Decode the combined data
+        $data = base64_decode($encrypted_string);
+        if ($data === false || strlen($data) < 28) { // 12 IV + 16 tag minimum
+            return '';
+        }
+
+        // Extract components
+        $iv = substr($data, 0, 12);
+        $tag = substr($data, 12, 16);
+        $ciphertext = substr($data, 28);
+
+        // Decrypt with authentication verification
+        $decrypted = openssl_decrypt($ciphertext, $cipher, $key, OPENSSL_RAW_DATA, $iv, $tag);
+
+        return $decrypted !== false ? $decrypted : '';
+    }
+
+    /**
+     * Legacy decrypt function for backward compatibility (static version)
+     */
+    private static function decrypt_string_legacy_static($encrypted_string) {
+        if (empty($encrypted_string)) {
+            return '';
+        }
+
+        $key = wp_salt('auth');
+        $decrypted = openssl_decrypt(base64_decode($encrypted_string), 'AES-256-CBC', $key, 0, substr($key, 0, 16));
+
+        return $decrypted !== false ? $decrypted : '';
+    }
+
+    /**
      * Track circuit breaker attempt for half-open state
      */
     private function track_circuit_breaker_attempt() {
@@ -709,9 +973,21 @@ class Emailit_API {
             return false;
         }
         
+        // Clear domain scope when API key changes (new key may have different scope)
+        $old_key = $this->get_api_key();
+        if (!empty($old_key) && $old_key !== $api_key) {
+            delete_option('emailit_api_key_domain_scope');
+            // Clear domain scope cache for old key
+            $old_cache_key = 'emailit_api_key_domain_scope_' . md5($old_key);
+            delete_transient($old_cache_key);
+        }
+        
         $result = update_option('emailit_api_key', $encrypted_key);
         
         $this->api_key = $api_key;
+        
+        // Clear validation cache
+        $this->clear_validation_cache();
         
         return $result;
     }
@@ -900,6 +1176,228 @@ class Emailit_API {
     }
 
     /**
+     * Get API key domain scope
+     * Attempts to determine what domain(s) the API key is scoped to
+     * 
+     * @return array|WP_Error Returns array with 'domain' or 'domains' key, or WP_Error on failure
+     */
+    public function get_api_key_domain_scope() {
+        // Check cache first (cache for 1 hour)
+        $cache_key = 'emailit_api_key_domain_scope_' . md5($this->api_key);
+        $cached_scope = get_transient($cache_key);
+        
+        if ($cached_scope !== false) {
+            return $cached_scope;
+        }
+
+        // Try to get domain scope from stored option (set during API key validation)
+        $stored_scope = get_option('emailit_api_key_domain_scope', null);
+        if ($stored_scope !== null) {
+            set_transient($cache_key, $stored_scope, 3600); // Cache for 1 hour
+            return $stored_scope;
+        }
+
+        // If no stored scope, try to infer from test email response
+        // This will be set when we receive domain-related errors
+        return array('domain' => null, 'domains' => array(), 'unrestricted' => true);
+    }
+
+    /**
+     * Validate domain scope for email sending
+     * Checks if the from email domain matches the API key's scoped domain
+     * 
+     * @param array $email_data Email data to validate
+     * @return true|WP_Error Returns true if valid, WP_Error if domain mismatch
+     */
+    private function validate_domain_scope($email_data) {
+        // Get the from email address
+        $from_email = null;
+        if (!empty($email_data['from'])) {
+            // Extract email from "Name <email>" format if needed
+            if (preg_match('/<(.+?)>/', $email_data['from'], $matches)) {
+                $from_email = $matches[1];
+            } else {
+                $from_email = $email_data['from'];
+            }
+        } else {
+            $from_email = get_option('emailit_from_email', get_bloginfo('admin_email'));
+        }
+
+        if (empty($from_email) || !is_email($from_email)) {
+            return true; // Let other validation handle invalid emails
+        }
+
+        // Extract domain from email
+        $email_parts = explode('@', $from_email);
+        if (count($email_parts) !== 2) {
+            return true; // Invalid email format, let other validation handle it
+        }
+        $from_domain = strtolower(trim($email_parts[1]));
+
+        // Get API key domain scope
+        $scope = $this->get_api_key_domain_scope();
+        
+        // If scope is unrestricted or not set, allow sending
+        if (is_array($scope) && (!empty($scope['unrestricted']) || empty($scope['domain']) && empty($scope['domains']))) {
+            return true;
+        }
+
+        // Check if domain matches scoped domain
+        $allowed_domains = array();
+        if (!empty($scope['domain'])) {
+            $allowed_domains[] = strtolower($scope['domain']);
+        }
+        if (!empty($scope['domains']) && is_array($scope['domains'])) {
+            $allowed_domains = array_merge($allowed_domains, array_map('strtolower', $scope['domains']));
+        }
+
+        if (empty($allowed_domains)) {
+            return true; // No domain restrictions
+        }
+
+        // Check if from domain matches any allowed domain
+        $domain_matches = false;
+        foreach ($allowed_domains as $allowed_domain) {
+            $allowed_domain = strtolower(trim($allowed_domain));
+            if ($from_domain === $allowed_domain) {
+                $domain_matches = true;
+                break;
+            }
+        }
+
+        if (!$domain_matches) {
+            $allowed_domains_str = implode(', ', $allowed_domains);
+            return new WP_Error(
+                'domain_scope_mismatch',
+                sprintf(
+                    __('API key is scoped to domain(s): %s, but email is being sent from: %s. Please use a from email address that matches the scoped domain.', 'emailit-integration'),
+                    $allowed_domains_str,
+                    $from_domain
+                ),
+                array(
+                    'from_domain' => $from_domain,
+                    'allowed_domains' => $allowed_domains,
+                    'from_email' => $from_email
+                )
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Update API key domain scope
+     * Called when we receive domain-related errors from the API
+     * 
+     * @param array|string $domain_info Domain information from API response
+     * @return bool Success status
+     */
+    public function update_api_key_domain_scope($domain_info) {
+        if (empty($domain_info)) {
+            return false;
+        }
+
+        $scope_data = array(
+            'domain' => null,
+            'domains' => array(),
+            'unrestricted' => false,
+            'updated_at' => current_time('mysql')
+        );
+
+        // Handle different formats
+        if (is_string($domain_info)) {
+            $scope_data['domain'] = $domain_info;
+            $scope_data['domains'] = array($domain_info);
+        } elseif (is_array($domain_info)) {
+            if (isset($domain_info['domain'])) {
+                $scope_data['domain'] = $domain_info['domain'];
+                $scope_data['domains'] = array($domain_info['domain']);
+            }
+            if (isset($domain_info['domains']) && is_array($domain_info['domains'])) {
+                $scope_data['domains'] = $domain_info['domains'];
+                if (count($domain_info['domains']) === 1) {
+                    $scope_data['domain'] = $domain_info['domains'][0];
+                }
+            }
+            if (isset($domain_info['unrestricted'])) {
+                $scope_data['unrestricted'] = (bool) $domain_info['unrestricted'];
+            }
+        }
+
+        // Store the scope
+        update_option('emailit_api_key_domain_scope', $scope_data);
+
+        // Clear cache
+        $cache_key = 'emailit_api_key_domain_scope_' . md5($this->api_key);
+        delete_transient($cache_key);
+
+        return true;
+    }
+
+    /**
+     * Handle domain scope errors from API responses
+     * Extracts domain scope information from error responses
+     * 
+     * @param array $parsed_response API response data
+     * @param string $error_message Error message
+     * @param int $response_code HTTP response code
+     */
+    private function handle_domain_scope_error($parsed_response, $error_message, $response_code) {
+        // Check for domain-related error messages (common patterns)
+        $domain_error_patterns = array(
+            '/domain.*scope/i',
+            '/domain.*restriction/i',
+            '/allowed.*domain/i',
+            '/scoped.*domain/i',
+            '/domain.*mismatch/i',
+            '/invalid.*domain/i'
+        );
+
+        $is_domain_error = false;
+        foreach ($domain_error_patterns as $pattern) {
+            if (preg_match($pattern, $error_message)) {
+                $is_domain_error = true;
+                break;
+            }
+        }
+
+        // Check for domain information in response
+        if ($is_domain_error || isset($parsed_response['domain']) || isset($parsed_response['allowed_domains'])) {
+            $domain_info = array();
+            
+            if (isset($parsed_response['domain'])) {
+                $domain_info['domain'] = $parsed_response['domain'];
+            }
+            if (isset($parsed_response['allowed_domains'])) {
+                $domain_info['domains'] = is_array($parsed_response['allowed_domains']) 
+                    ? $parsed_response['allowed_domains'] 
+                    : array($parsed_response['allowed_domains']);
+            }
+            if (isset($parsed_response['scoped_domain'])) {
+                $domain_info['domain'] = $parsed_response['scoped_domain'];
+                $domain_info['domains'] = array($parsed_response['scoped_domain']);
+            }
+
+            // Try to extract domain from error message if not in response
+            if (empty($domain_info) && preg_match('/domain[:\s]+([a-z0-9.-]+\.[a-z]{2,})/i', $error_message, $matches)) {
+                $domain_info['domain'] = strtolower($matches[1]);
+                $domain_info['domains'] = array($domain_info['domain']);
+            }
+
+            if (!empty($domain_info)) {
+                $this->update_api_key_domain_scope($domain_info);
+                
+                if ($this->logger) {
+                    $this->logger->log('API key domain scope detected from error response', 'info', array(
+                        'domain_info' => $domain_info,
+                        'error_message' => $error_message
+                    ));
+                }
+            }
+        }
+    }
+
+    /**
      * Clear API key validation cache
      */
     public function clear_validation_cache() {
@@ -918,6 +1416,9 @@ class Emailit_API {
         // Remove the API key from options
         delete_option('emailit_api_key');
         
+        // Clear domain scope when API key is removed
+        delete_option('emailit_api_key_domain_scope');
+        
         // Clear cached API key
         $this->api_key = null;
         
@@ -926,6 +1427,12 @@ class Emailit_API {
         // Clear transient cache
         delete_transient('emailit_api_key_cache');
         
+        // Clear domain scope cache
+        if (!empty($this->api_key)) {
+            $domain_cache_key = 'emailit_api_key_domain_scope_' . md5($this->api_key);
+            delete_transient($domain_cache_key);
+        }
+        
         // Clear all related caches
         $this->clear_validation_cache();
         
@@ -933,6 +1440,8 @@ class Emailit_API {
         global $wpdb;
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_emailit_api_key_valid_%'");
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_emailit_api_key_valid_%'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_emailit_api_key_domain_scope_%'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_emailit_api_key_domain_scope_%'");
         
         
         return true;
@@ -1107,6 +1616,163 @@ class Emailit_API {
         }
 
         return $data;
+    }
+
+    /**
+     * Subscribe user to EmailIt audience
+     * 
+     * Uses EmailIt API v2: POST /v2/audiences/{audience_id}/subscribers
+     * 
+     * @param string $audience_id The EmailIt audience ID
+     * @param string $email Subscriber email address
+     * @param string $first_name Optional first name
+     * @param string $last_name Optional last name
+     * @return array|WP_Error Response array with success status and data, or WP_Error on failure
+     */
+    public function subscribe_to_audience($audience_id, $email, $first_name = '', $last_name = '') {
+        // Validate inputs
+        if (empty($audience_id)) {
+            return new WP_Error('missing_audience_id', __('Audience ID is required.', 'emailit-integration'));
+        }
+
+        if (empty($email) || !is_email($email)) {
+            return new WP_Error('invalid_email', __('Valid email address is required.', 'emailit-integration'));
+        }
+
+        // Get API key
+        $api_key = $this->get_api_key();
+        if (empty($api_key)) {
+            return new WP_Error('no_api_key', __('Emailit API key is not configured.', 'emailit-integration'));
+        }
+
+        // Build API endpoint
+        $api_url = 'https://api.emailit.com/v2/audiences/' . sanitize_text_field($audience_id) . '/subscribers';
+
+        // Build request body
+        $body = array(
+            'email' => sanitize_email($email),
+        );
+
+        if (!empty($first_name)) {
+            $body['first_name'] = sanitize_text_field($first_name);
+        }
+
+        if (!empty($last_name)) {
+            $body['last_name'] = sanitize_text_field($last_name);
+        }
+
+        // Prepare API request
+        $args = array(
+            'method'  => 'POST',
+            'headers' => array(
+                'Authorization' => 'Bearer ' . sanitize_text_field($api_key),
+                'Content-Type'  => 'application/json',
+                'User-Agent'    => 'WordPress/' . get_bloginfo('version') . '; Emailit-Integration/' . EMAILIT_VERSION
+            ),
+            'body'    => wp_json_encode($body),
+            'timeout' => 15,
+        );
+
+        // Apply filters
+        $args = apply_filters('emailit_api_args', $args, array('endpoint' => 'subscribe_to_audience', 'body' => $body));
+
+        // Make request
+        $response = wp_remote_request($api_url, $args);
+
+        // Handle response
+        if (is_wp_error($response)) {
+            if ($this->logger) {
+                $this->logger->log('Emailit audience subscription failed: ' . $response->get_error_message(), 'error', array(
+                    'audience_id' => $audience_id,
+                    'email' => $email
+                ));
+            }
+            return new WP_Error('api_request_failed', $response->get_error_message());
+        }
+
+        $response_code = absint(wp_remote_retrieve_response_code($response));
+        $response_body = wp_remote_retrieve_body($response);
+        $parsed_response = json_decode($response_body, true);
+
+        // Handle success responses: 201 (created) or 409 (already exists)
+        if (201 === $response_code || 409 === $response_code) {
+            $subscription_status = (409 === $response_code) ? 'existing' : 'new';
+            
+            $result = array(
+                'success' => true,
+                'status' => $subscription_status,
+                'response_code' => $response_code,
+                'data' => $parsed_response
+            );
+
+            // Extract subscriber ID if available
+            if (is_array($parsed_response) && isset($parsed_response['id'])) {
+                $result['subscriber_id'] = sanitize_text_field($parsed_response['id']);
+            }
+
+            if ($this->logger) {
+                $this->logger->log('Emailit audience subscription successful', 'info', array(
+                    'audience_id' => $audience_id,
+                    'email' => $email,
+                    'status' => $subscription_status
+                ));
+            }
+
+            return $result;
+        }
+
+        // Handle error responses
+        $error_message = $this->get_audience_subscription_error_message($response_code, $response_body, $parsed_response);
+        
+        if ($this->logger) {
+            $this->logger->log('Emailit audience subscription failed: HTTP ' . $response_code . ' - ' . $error_message, 'error', array(
+                'audience_id' => $audience_id,
+                'email' => $email,
+                'response_code' => $response_code
+            ));
+        }
+
+        return new WP_Error(
+            'api_error',
+            $error_message,
+            array(
+                'response_code' => $response_code,
+                'response_body' => $parsed_response
+            )
+        );
+    }
+
+    /**
+     * Get user-friendly error message for audience subscription
+     */
+    private function get_audience_subscription_error_message($response_code, $response_body, $parsed_response) {
+        // Try to extract error message from response
+        if (is_array($parsed_response)) {
+            if (isset($parsed_response['message']) && is_string($parsed_response['message'])) {
+                return sanitize_text_field($parsed_response['message']);
+            }
+
+            if (isset($parsed_response['error']) && is_string($parsed_response['error'])) {
+                return sanitize_text_field($parsed_response['error']);
+            }
+        }
+
+        // Default messages based on status code
+        switch ($response_code) {
+            case 400:
+                return __('Bad Request - Invalid data provided', 'emailit-integration');
+            case 401:
+                return __('Unauthorized - Invalid API key', 'emailit-integration');
+            case 404:
+                return __('Not Found - Audience does not exist', 'emailit-integration');
+            case 422:
+                return __('Unprocessable Entity - Validation error', 'emailit-integration');
+            case 500:
+                return __('Internal Server Error - EmailIt server error', 'emailit-integration');
+            default:
+                $safe_body = sanitize_text_field(substr($response_body, 0, 200));
+                return sprintf(__('Unknown error (HTTP %d): %s', 'emailit-integration'), $response_code, $safe_body);
+        }
     }
 
 }

@@ -87,12 +87,53 @@ class Emailit_Logger {
             $log_data['queue_id'] = (int) $email_data['queue_id'];
         }
 
-        // Add message content
+        // Add message content with optional truncation for minimal logging
+        $minimal_logging = (bool) get_option('emailit_minimal_logging', false);
+        $max_body_length = (int) get_option('emailit_log_body_max_length', 10000);
+        $html_content = null;
+        $text_content = null;
+        $truncated_html = false;
+        $truncated_text = false;
+
         if (isset($email_data['content_type']) && $email_data['content_type'] === 'text/html') {
-            $log_data['body_html'] = $email_data['message'];
-            $log_data['body_text'] = $this->html_to_text($email_data['message']);
+            $html_content = $email_data['message'];
+            $text_content = $this->html_to_text($html_content);
+            
+            if ($minimal_logging) {
+                $original_html_len = strlen($html_content);
+                $original_text_len = strlen($text_content);
+                
+                $log_data['body_html'] = $this->truncate_log_content($html_content, $max_body_length);
+                $log_data['body_text'] = $this->truncate_log_content($text_content, $max_body_length);
+                
+                $truncated_html = strlen($log_data['body_html']) < $original_html_len;
+                $truncated_text = strlen($log_data['body_text']) < $original_text_len;
+            } else {
+                $log_data['body_html'] = $html_content;
+                $log_data['body_text'] = $text_content;
+            }
         } else {
-            $log_data['body_text'] = $email_data['message'];
+            $text_content = $email_data['message'];
+            if ($minimal_logging) {
+                $original_text_len = strlen($text_content);
+                $log_data['body_text'] = $this->truncate_log_content($text_content, $max_body_length);
+                $truncated_text = strlen($log_data['body_text']) < $original_text_len;
+            } else {
+                $log_data['body_text'] = $text_content;
+            }
+        }
+
+        // Add truncation indicator to details if content was truncated
+        if ($minimal_logging && ($truncated_html || $truncated_text)) {
+            $existing_details = isset($log_data['details']) ? json_decode($log_data['details'], true) : array();
+            if (!is_array($existing_details)) {
+                $existing_details = array();
+            }
+            $existing_details['truncated'] = true;
+            $existing_details['truncated_html'] = $truncated_html;
+            $existing_details['truncated_text'] = $truncated_text;
+            $existing_details['max_length'] = $max_body_length;
+            $log_data['details'] = wp_json_encode($existing_details);
         }
 
         // Add response time if available
@@ -252,6 +293,13 @@ class Emailit_Logger {
     public function log_webhook(array $event_data, ?string $email_id = null) {
         global $wpdb;
 
+        // Get payload logging level setting (default: 'truncated')
+        $payload_logging = get_option('emailit_webhook_payload_logging', 'truncated');
+        $max_payload_length = (int) get_option('emailit_webhook_payload_max_length', 5000);
+
+        // Process payload based on logging level
+        $payload_result = $this->process_webhook_payload($event_data, $payload_logging, $max_payload_length);
+
         $log_data = array(
             'webhook_request_id' => isset($event_data['request_id']) ? sanitize_text_field($event_data['request_id']) : null,
             'event_id' => isset($event_data['event_id']) ? sanitize_text_field($event_data['event_id']) : null,
@@ -259,9 +307,20 @@ class Emailit_Logger {
             'email_id' => $email_id ? sanitize_text_field($email_id) : null,
             'status' => isset($event_data['status']) ? sanitize_text_field($event_data['status']) : null,
             'details' => isset($event_data['details']) ? wp_json_encode($event_data['details']) : null,
-            'raw_payload' => wp_json_encode($event_data),
+            'raw_payload' => $payload_result['payload'],
             'processed_at' => current_time('mysql')
         );
+
+        // Add payload hash to details if truncated or hash-only mode
+        if (!empty($payload_result['hash'])) {
+            $details = isset($event_data['details']) ? $event_data['details'] : array();
+            if (!is_array($details)) {
+                $details = array();
+            }
+            $details['payload_hash'] = $payload_result['hash'];
+            $details['payload_truncated'] = $payload_result['truncated'];
+            $log_data['details'] = wp_json_encode($details);
+        }
 
         $result = $wpdb->insert(
             $this->webhook_logs_table,
@@ -280,6 +339,61 @@ class Emailit_Logger {
         do_action('emailit_webhook_logged', $log_id, $event_data, $email_id);
 
         return $log_id;
+    }
+
+    /**
+     * Process webhook payload based on logging level
+     * 
+     * @param array $event_data Full event data
+     * @param string $logging_level 'full', 'truncated', or 'hash_only'
+     * @param int $max_length Maximum payload length for truncated mode
+     * @return array Array with 'payload', 'hash', and 'truncated' keys
+     */
+    private function process_webhook_payload(array $event_data, string $logging_level, int $max_length) {
+        $full_payload = wp_json_encode($event_data);
+        $payload_hash = hash('sha256', $full_payload);
+        $truncated = false;
+
+        // Full logging: store everything (only in debug mode or explicit setting)
+        if ($logging_level === 'full') {
+            // Only allow full logging if WP_DEBUG is enabled or explicitly set
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                return array(
+                    'payload' => $full_payload,
+                    'hash' => null,
+                    'truncated' => false
+                );
+            }
+            // Fall through to truncated if not in debug mode
+            $logging_level = 'truncated';
+        }
+
+        // Hash-only mode: store only hash
+        if ($logging_level === 'hash_only') {
+            return array(
+                'payload' => null,
+                'hash' => $payload_hash,
+                'truncated' => true
+            );
+        }
+
+        // Truncated mode (default): store first N chars + hash
+        if (strlen($full_payload) > $max_length) {
+            $truncated_payload = substr($full_payload, 0, $max_length);
+            $truncated_payload .= "\n... [TRUNCATED - Full payload hash: {$payload_hash}]";
+            return array(
+                'payload' => $truncated_payload,
+                'hash' => $payload_hash,
+                'truncated' => true
+            );
+        }
+
+        // Payload fits within limit
+        return array(
+            'payload' => $full_payload,
+            'hash' => $payload_hash,
+            'truncated' => false
+        );
     }
 
     /**
@@ -461,24 +575,40 @@ class Emailit_Logger {
         global $wpdb;
 
         $retention_days = (int) get_option('emailit_log_retention_days', 30);
+        $payload_retention_days = (int) get_option('emailit_webhook_payload_retention_days', 0);
+        $payload_retention_days = max(0, min(7, $payload_retention_days)); // clamp 0-7
 
-        if ($retention_days <= 0) {
-            return; // Retention disabled
+        $deleted_logs = 0;
+        $deleted_webhooks = 0;
+
+        if ($retention_days > 0) {
+            $cutoff_date = date('Y-m-d H:i:s', strtotime("-{$retention_days} days"));
+
+            // Delete old email logs
+            $deleted_logs = $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$this->logs_table} WHERE created_at < %s",
+                $cutoff_date
+            ));
+
+            // Delete old webhook logs
+            $deleted_webhooks = $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$this->webhook_logs_table} WHERE processed_at < %s",
+                $cutoff_date
+            ));
         }
 
-        $cutoff_date = date('Y-m-d H:i:s', strtotime("-{$retention_days} days"));
-
-        // Delete old email logs
-        $deleted_logs = $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$this->logs_table} WHERE created_at < %s",
-            $cutoff_date
-        ));
-
-        // Delete old webhook logs
-        $deleted_webhooks = $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$this->webhook_logs_table} WHERE processed_at < %s",
-            $cutoff_date
-        ));
+        // Truncate stored webhook payloads beyond the retention window (or all if disabled)
+        if ($payload_retention_days === 0) {
+            $truncated_payloads = $wpdb->query(
+                "UPDATE {$this->webhook_logs_table} SET raw_payload = LEFT(raw_payload, 500) WHERE raw_payload IS NOT NULL"
+            );
+        } else {
+            $payload_cutoff = date('Y-m-d H:i:s', strtotime("-{$payload_retention_days} days"));
+            $truncated_payloads = $wpdb->query($wpdb->prepare(
+                "UPDATE {$this->webhook_logs_table} SET raw_payload = LEFT(raw_payload, 500) WHERE processed_at < %s AND raw_payload IS NOT NULL",
+                $payload_cutoff
+            ));
+        }
 
         if ($deleted_logs > 0 || $deleted_webhooks > 0) {
             $this->log(sprintf(
@@ -490,7 +620,8 @@ class Emailit_Logger {
 
         return array(
             'email_logs_deleted' => $deleted_logs,
-            'webhook_logs_deleted' => $deleted_webhooks
+            'webhook_logs_deleted' => $deleted_webhooks,
+            'webhook_payloads_truncated' => $truncated_payloads
         );
     }
 
@@ -686,6 +817,37 @@ class Emailit_Logger {
         $text = wp_strip_all_tags($html);
         $text = preg_replace('/\n\s*\n/', "\n\n", $text);
         return trim($text);
+    }
+
+    /**
+     * Truncate log content to specified length
+     * 
+     * @param string $content Content to truncate
+     * @param int $max_length Maximum length in characters
+     * @return string Truncated content with indicator if truncated
+     */
+    private function truncate_log_content($content, $max_length) {
+        if (empty($content) || strlen($content) <= $max_length) {
+            return $content;
+        }
+
+        // Truncate to max length, preserving word boundaries where possible
+        $truncated = substr($content, 0, $max_length);
+        
+        // Try to truncate at a word boundary (space, newline, etc.)
+        $last_space = strrpos($truncated, ' ');
+        $last_newline = strrpos($truncated, "\n");
+        $cut_point = max($last_space, $last_newline);
+        
+        if ($cut_point !== false && $cut_point > ($max_length * 0.8)) {
+            // Use word boundary if it's not too close to the start
+            $truncated = substr($truncated, 0, $cut_point);
+        }
+
+        // Add truncation indicator
+        $truncated .= "\n\n[TRUNCATED - Original length: " . strlen($content) . " characters]";
+
+        return $truncated;
     }
 
     /**
